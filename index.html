@@ -2175,75 +2175,243 @@ function errText(err) {
       return 'Error de conexión' + (err && err.type ? ' (' + err.type + ')' : '') + '.';
   }
 }
+/* ---------- Transporte de respaldo: MQTT sobre WebSocket (servidores públicos) ----------
+   Si la conexión directa (WebRTC) falla, los dos jugadores se comunican a través de un servidor público.
+   Sólo viajan jugadas de la partida; el tema de cada sala lleva un código aleatorio. */
+const MQTT_BROKERS = window.__MQTT_BROKERS || ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081/'];
+const MQ_ENC = new TextEncoder(), MQ_DEC = new TextDecoder();
+function mqCat(parts) { let n = 0; parts.forEach(q => n += q.length); const o = new Uint8Array(n); let k = 0; parts.forEach(q => { o.set(q, k); k += q.length; }); return o; }
+function mqStr(t) { const b = MQ_ENC.encode(t); return mqCat([Uint8Array.of(b.length >> 8, b.length & 255), b]); }
+function mqPkt(first, parts) {
+  const body = mqCat(parts), rl = []; let n = body.length;
+  do { let d = n % 128; n = Math.floor(n / 128); if (n > 0) d |= 128; rl.push(d); } while (n > 0);
+  return mqCat([Uint8Array.of(first, ...rl), body]);
+}
+function rid8() { return Math.random().toString(36).slice(2, 10); }
+class Mqtt {
+  constructor(url, keep) { this.url = url; this.keep = !!keep; this.ws = null; this.buf = new Uint8Array(0); this.ready = false; this.dead = false; this.pid = 1; this.cbs = {}; this.ka = null; this.first = false; this.onMsg = null; this.onUp = null; this.onDown = null; }
+  open() {
+    let ws; try { ws = new WebSocket(this.url, 'mqtt'); } catch (e) { return this._down(); }
+    this.ws = ws; ws.binaryType = 'arraybuffer';
+    ws.onopen = () => { try { ws.send(mqPkt(0x10, [mqStr('MQTT'), Uint8Array.of(4, 2, 0, 30), mqStr('duelo' + rid8() + rid8())])); } catch (e) {} };
+    ws.onmessage = ev => this._rx(new Uint8Array(ev.data));
+    ws.onclose = ws.onerror = () => { if (this.ws === ws) this._down(); };
+  }
+  _down() {
+    this.ready = false; this.first = true; clearInterval(this.ka); this.ws = null;
+    if (this.dead) return;
+    if (this.onDown) this.onDown();
+    if (this.keep) setTimeout(() => { if (!this.dead) this.open(); }, 3000);
+  }
+  _rx(chunk) {
+    let b = mqCat([this.buf, chunk]);
+    while (b.length >= 2) {
+      let len = 0, mul = 1, i = 1, ok = false;
+      for (; i < 5 && i < b.length; i++) { len += (b[i] & 127) * mul; mul *= 128; if (!(b[i] & 128)) { ok = true; i++; break; } }
+      if (!ok || b.length < i + len) break;
+      this._pkt(b[0], b.subarray(i, i + len)); b = b.subarray(i + len);
+    }
+    this.buf = b;
+  }
+  _pkt(h, q) {
+    const type = h >> 4;
+    if (type === 2) {
+      if (q[1] === 0) {
+        this.ready = true; this.first = true;
+        this.ka = setInterval(() => { try { this.ws.send(Uint8Array.of(0xC0, 0)); } catch (e) {} }, 20000);
+        if (this.onUp) this.onUp();
+      } else { try { this.ws.close(); } catch (e) {} }
+    } else if (type === 9) {
+      const id = (q[0] << 8) | q[1], f = this.cbs[id]; delete this.cbs[id]; if (f) f();
+    } else if (type === 3) {
+      const tl = (q[0] << 8) | q[1]; let off = 2 + tl;
+      const topic = MQ_DEC.decode(q.subarray(2, off));
+      if ((h >> 1) & 3) off += 2;
+      if (this.onMsg) this.onMsg(topic, MQ_DEC.decode(q.subarray(off)));
+    }
+  }
+  sub(topic, cb) {
+    if (!this.ready) return;
+    const id = this.pid++ & 0xffff || 1; if (cb) this.cbs[id] = cb;
+    try { this.ws.send(mqPkt(0x82, [Uint8Array.of(id >> 8, id & 255), mqStr(topic), Uint8Array.of(0)])); } catch (e) {}
+  }
+  pub(topic, text) { if (!this.ready) return; try { this.ws.send(mqPkt(0x30, [mqStr(topic), MQ_ENC.encode(text)])); } catch (e) {} }
+  close() { this.dead = true; this.ready = false; clearInterval(this.ka); try { if (this.ws) this.ws.close(); } catch (e) {} this.ws = null; }
+}
+/* Enlace con la misma interfaz que una conexión de PeerJS: on('open'|'data'|'close'), send, close, open */
+class MqLink {
+  constructor(mq, topic, sid, up) { this.mq = mq; this.topic = topic; this.sid = sid; this.up = up; this.open = false; this.closed = false; this.h = {}; this.lastRx = Date.now(); this.hb = null; this.onGone = null; }
+  on(ev, f) { (this.h[ev] = this.h[ev] || []).push(f); return this; }
+  emit(ev, a) { (this.h[ev] || []).slice().forEach(f => { try { f(a); } catch (e) {} }); }
+  _open() {
+    if (this.open || this.closed) return;
+    this.open = true; this.lastRx = Date.now(); this._pub('hb');
+    this.hb = setInterval(() => { if (this.open) this._pub('hb'); if (Date.now() - this.lastRx > 120000) this.close(true); }, 10000);
+    this.emit('open');
+  }
+  _stale() { return Date.now() - this.lastRx > 25000; }
+  send(m) { this._pub('msg', m); }
+  _pub(k, m) { this.mq.pub(this.topic, JSON.stringify(this.up ? { s: this.sid, k, m } : { k, m })); }
+  _rx(k, m) {
+    this.lastRx = Date.now();
+    if (k === 'bye') return this.close(true);
+    if (!this.open && !this.closed) this._open();
+    if (k === 'msg') this.emit('data', m);
+  }
+  close(remote) {
+    if (this.closed) return;
+    const was = this.open; this.closed = true; this.open = false; clearInterval(this.hb);
+    if (was && !remote) this._pub('bye');
+    if (this.up) { const mq = this.mq; setTimeout(() => mq.close(), 150); }
+    if (this.onGone) this.onGone();
+    this.emit('close');
+  }
+}
+/* Anfitrión: escucha en varios servidores a la vez; cada invitado se anuncia con "hello" */
+class MqHub {
+  constructor(code, onLink, onState) {
+    this.base = 'duelo-espiritus-v1/' + code; this.links = {}; this.onState = onState;
+    this.clients = MQTT_BROKERS.map(url => {
+      const m = new Mqtt(url, true);
+      m.onUp = () => { m.sub(this.base + '/up'); this.onState(); };
+      m.onDown = () => this.onState();
+      m.onMsg = (t, txt) => {
+        let o; try { o = JSON.parse(txt); } catch (e) { return; }
+        if (!o || !o.s) return;
+        let l = this.links[o.s];
+        if (o.k === 'hello') {
+          if (!l) { l = new MqLink(m, this.base + '/dn/' + o.s, o.s, false); l.onGone = () => { delete this.links[o.s]; }; this.links[o.s] = l; onLink(l); }
+          else l._pub('hb');
+        } else if (l) l._rx(o.k, o.m);
+      };
+      m.open(); return m;
+    });
+  }
+  count() { return this.clients.filter(m => m.ready).length; }
+  allFailed() { return this.clients.every(m => m.first && !m.ready); }
+  close() { Object.values(this.links).forEach(l => l.close()); this.clients.forEach(m => m.close()); }
+}
+let hub = null;
+
 function resetNet() {
   clearTimeout(joinTimer);
   try { if (conn) conn.close(); } catch (e) {}
+  try { if (hub) hub.close(); } catch (e) {}
   try { if (peer) peer.destroy(); } catch (e) {}
-  peer = null; conn = null;
+  peer = null; conn = null; hub = null;
 }
 function fatal(msg) { resetNet(); V = null; G = null; inSetup = false; showSection('lobby'); setBusy(false); lobbyMsg(msg); }
 function onNetError(err) { if (!V && !inSetup) return fatal(errText(err)); banner(errText(err)); }
-function checkLib() {
-  if (typeof Peer === 'undefined') { lobbyMsg('No se pudo cargar la librería de conexión (PeerJS). Revisa tu internet y recarga la página.'); return false; }
-  return true;
-}
 function send(m) { if (conn && conn.open) { try { conn.send(m); } catch (e) {} } }
 
 function createRoom(tries) {
   tries = tries || 0;
-  if (!checkLib()) return;
   resetNet();
   vsAI = false; isHost = true; me = 0; roomCode = randomCode(); G = null; V = null; gameNo = 0; inSetup = false;
   setBusy(true); lobbyMsg('Creando sala…', true);
-  peer = new Peer(ID_PREFIX + roomCode, PEER_CFG);
-  peer.on('open', () => {
+  const st = { shown: false, rtcErr: null, rtcDown: typeof Peer === 'undefined' };
+  const show = () => {
+    if (st.shown) return; st.shown = true;
     $('linkBox').value = location.href.split('#')[0] + '#' + roomCode;
     $('codeShow').textContent = roomCode;
     $('fileWarn2').hidden = location.protocol !== 'file:';
     showSection('waiting'); lobbyMsg('');
-  });
-  peer.on('connection', onIncoming);
-  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
-  peer.on('error', err => { if (err.type === 'unavailable-id' && tries < 5) return createRoom(tries + 1); onNetError(err); });
+  };
+  const check = () => {
+    if (st.shown) return;
+    if (hub && hub.count()) return show();
+    if (st.rtcDown && hub && hub.allFailed()) fatal(st.rtcErr ? errText(st.rtcErr) : 'No pude contactar los servidores que ayudan a conectar a los jugadores. Revisa tu internet y recarga la página.');
+  };
+  hub = new MqHub(roomCode, l => { onIncoming(l); l._open(); }, check);
+  setTimeout(check, 0);
+  if (typeof Peer !== 'undefined') {
+    peer = new Peer(ID_PREFIX + roomCode, PEER_CFG);
+    peer.on('open', show);
+    peer.on('connection', onIncoming);
+    peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+    peer.on('error', err => {
+      if (err.type === 'unavailable-id' && tries < 5) return createRoom(tries + 1);
+      st.rtcErr = err; st.rtcDown = true;
+      if (st.shown) { if (!hub || !hub.count()) onNetError(err); return; }
+      check();
+    });
+  }
 }
 function joinRoom(raw) {
   const code = (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (code.length !== 5) { lobbyMsg('El código tiene 5 caracteres.'); return; }
-  if (!checkLib()) return;
   resetNet();
   vsAI = false; isHost = false; me = 1; roomCode = code; V = null; G = null; inSetup = false;
   setBusy(true); lobbyMsg('Conectando con la sala ' + code + '…', true);
+  const diag = { rtc: '', rtcErr: null, mq: [], mqStarted: false };
+  if (typeof Peer === 'undefined') { diag.rtc = 'no disponible'; return tryMqtt(0, diag); }
   peer = new Peer(PEER_CFG);
-  peer.on('open', () => tryJoin(1));
-  peer.on('error', onNetError);
+  peer.on('open', () => tryRtc(diag));
+  peer.on('error', err => {
+    if (V || inSetup) return onNetError(err);
+    diag.rtcErr = err; diag.rtc = err && err.type ? err.type : 'error';
+    clearTimeout(joinTimer);
+    if (conn && conn._retry) { const o = conn; o._retry = null; conn = null; try { o.close(); } catch (e) {} }
+    if (!diag.mqStarted) tryMqtt(0, diag);
+  });
 }
-/* El invitado reintenta hasta 3 veces y, si falla, informa qué tipos de ruta encontró (host/srflx/relay) */
-function tryJoin(n) {
-  if (!peer || isHost || V || inSetup) return;
+/* Intento 1: conexión directa (WebRTC). Si no abre en 10 s, pasa al servidor de respaldo. */
+function tryRtc(diag) {
+  if (!peer || isHost || V || inSetup || diag.mqStarted) return;
   clearTimeout(joinTimer);
   const cand = {};
   const c = peer.connect(ID_PREFIX + roomCode, { reliable: true });
   conn = c; setupConn(c);
   try { c.peerConnection.addEventListener('icecandidate', ev => { if (ev.candidate) { const m = /typ (\w+)/.exec(ev.candidate.candidate || ''); const t = ev.candidate.type || (m ? m[1] : '?'); cand[t] = (cand[t] || 0) + 1; } }); } catch (e) {}
-  const giveUp = () => {
-    let st = '?', sig = peer && !peer.disconnected ? 'ok' : 'caída';
-    try { st = c.peerConnection.iceConnectionState; } catch (e) {}
-    const cs = Object.keys(cand).map(k => k + ' ' + cand[k]).join(', ') || 'ninguna';
-    fatal('No se pudo establecer la conexión tras ' + n + ' intentos (estado: ' + st + '; rutas: ' + cs + '; señal: ' + sig + '). A veces pasa con ciertas redes (por ejemplo, datos móviles o redes de oficina). Prueba con otra red o intenta de nuevo.');
-  };
-  const next = () => {
+  const fail = () => {
     c._retry = null;
-    if (conn !== c || V || inSetup) return;
+    if (conn !== c || V || inSetup || diag.mqStarted) return;
     clearTimeout(joinTimer);
-    if (n >= 3) return giveUp();
-    try { c.close(); } catch (e) {}
-    conn = null; lobbyMsg('Reintentando la conexión (' + (n + 1) + ' de 3)…', true);
-    joinTimer = setTimeout(() => tryJoin(n + 1), 600);
+    let st = '?'; try { st = c.peerConnection.iceConnectionState; } catch (e) {}
+    diag.rtc = 'estado ' + st + ', rutas ' + (Object.keys(cand).map(k => k + ' ' + cand[k]).join(', ') || 'ninguna');
+    conn = null; try { c.close(); } catch (e) {}
+    lobbyMsg('Probando otra vía de conexión…', true);
+    joinTimer = setTimeout(() => tryMqtt(0, diag), 1500);
   };
-  c._retry = next;
-  joinTimer = setTimeout(next, 20000);
+  c._retry = fail;
+  joinTimer = setTimeout(fail, 10000);
+}
+/* Intento 2: servidor público (MQTT). Prueba cada servidor en orden. */
+function tryMqtt(i, diag) {
+  if (isHost || V || inSetup) return;
+  diag.mqStarted = true;
+  if (i >= MQTT_BROKERS.length) return giveUp(diag);
+  const url = MQTT_BROKERS[i], name = url.replace(/^wss?:\/\//, '').split(/[:/]/)[0];
+  const base = 'duelo-espiritus-v1/' + roomCode, sid = rid8() + rid8();
+  const mq = new Mqtt(url, false), l = new MqLink(mq, base + '/up', sid, true);
+  let done = false, hello = null;
+  const fail = why => {
+    if (done) return; done = true; clearInterval(hello); clearTimeout(joinTimer); l._retry = null;
+    diag.mq.push(name + ': ' + why);
+    if (conn === l) conn = null;
+    l.close(true); mq.close();
+    setTimeout(() => tryMqtt(i + 1, diag), 300);
+  };
+  conn = l; setupConn(l);
+  l.on('open', () => { done = true; clearInterval(hello); clearTimeout(joinTimer); });
+  l._retry = () => fail('cerrada');
+  mq.onMsg = (t, txt) => { let o; try { o = JSON.parse(txt); } catch (e) { return; } if (o && o.k) l._rx(o.k, o.m); };
+  mq.onDown = () => { if (!done) fail('sin conexión'); else l.close(true); };
+  mq.onUp = () => mq.sub(base + '/dn/' + sid, () => {
+    const hi = () => mq.pub(base + '/up', JSON.stringify({ s: sid, k: 'hello' }));
+    hi(); hello = setInterval(() => { if (l.open) clearInterval(hello); else hi(); }, 1500);
+  });
+  clearTimeout(joinTimer);
+  joinTimer = setTimeout(() => fail(mq.ready ? 'la sala no responde' : 'no conectó'), 7000);
+  lobbyMsg('Conectando por servidor (' + (i + 1) + ' de ' + MQTT_BROKERS.length + ')…', true);
+  mq.open();
+}
+function giveUp(diag) {
+  if (diag.rtcErr && diag.rtcErr.type === 'peer-unavailable') return fatal(errText(diag.rtcErr));
+  fatal('No se pudo establecer la conexión. Directa: ' + (diag.rtc || 'sin datos') + '. Por servidor: ' + (diag.mq.join('; ') || 'sin servidores') + '. Prueba con otra red (sin VPN ni bloqueadores) o intenta de nuevo.');
 }
 function onIncoming(c) {
+  if (conn && conn.open && conn._stale && conn._stale()) { const o = conn; conn = null; o.close(true); }
   if (conn && conn.open) {
     c.on('open', () => { try { c.send({ t: 'full' }); } catch (e) {} setTimeout(() => c.close(), 400); });
     return;
@@ -3252,7 +3420,7 @@ $('posStrip').addEventListener('click', e => {
   renderSetup();
 });
 $('btnReady').addEventListener('click', submitReady);
-window.addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch (e) {} });
+window.addEventListener('beforeunload', () => { try { if (conn) conn.close(); } catch (e) {} try { if (hub) hub.close(); } catch (e) {} try { if (peer) peer.destroy(); } catch (e) {} });
 
 window.__ui = { get V() { return V; }, get G() { return G; }, get me() { return me; }, get waiting() { return waiting; }, doAct: i => doAct(i), legal: () => AIKit.legalInputs(G), render };
 /* ---------- arranque ---------- */
