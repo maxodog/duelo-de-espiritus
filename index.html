@@ -352,6 +352,10 @@
   .handrow .cards{flex:1; min-width:0}
   .tcol{width:124px; flex:none; display:flex; flex-direction:column; gap:4px}
   .tlbl{font-size:12px; color:var(--muted)}
+  /* títulos de tus propias zonas (mano, tienda, trucos): grandes, dorados y con otra tipografía para que se noten */
+  .hdr{font-family:"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; font-size:21px; font-weight:800; letter-spacing:.4px; color:#ffd36b; border-left:5px solid #ffd36b; padding-left:9px; line-height:1.1; margin:6px 0 0; text-shadow:0 1px 0 #0008}
+  .tlbl.hdr{font-size:17px; border-left-width:4px; padding-left:7px; margin:0 0 2px}
+  .hdr #playedInfo{font-family:inherit; font-size:13px; font-weight:600; color:var(--muted); letter-spacing:0}
   #myTricks{display:flex; flex-direction:column; gap:5px}
   #myTricks .tk{padding:4px 6px 5px; font-size:11px} #myTricks .tk b{font-size:12px}
   .tk.compact:hover, .mini[data-tipcard]:hover{filter:brightness(1.08)}
@@ -477,10 +481,10 @@
         <details class="symkey"><summary>Simbología del juego</summary>
           <div class="symlist" id="symList"></div>
         </details>
-        <div class="secttl">Tu mano <span id="playedInfo"></span></div>
+        <div class="secttl hdr">Mano <span id="playedInfo"></span></div>
         <div class="handrow">
           <div class="cards" id="hand"></div>
-          <div class="tcol"><div class="tlbl">Trucos</div><div class="tslots" id="myTricks"></div></div>
+          <div class="tcol"><div class="tlbl hdr">Trucos</div><div class="tslots" id="myTricks"></div></div>
         </div>
         <div id="modePanel" hidden>
           <button id="btnAct">Usar como Acción</button>
@@ -488,7 +492,7 @@
           <button id="btnCancel" class="secondary">Cancelar</button>
         </div>
 
-        <div class="secttl">Tu tienda</div>
+        <div class="secttl hdr">Tienda</div>
         <div class="slots" id="row"></div>
         <div class="secttl">Tienda del rival</div>
         <div class="minirow" id="oppRow"></div>
