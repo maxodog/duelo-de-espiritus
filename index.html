@@ -495,7 +495,7 @@
         <li><b>Golpes:</b> tras jugar tus cartas, cada orbe rival en la casilla de uno de tus espíritus es un golpe: retrocede 1 zona por golpe y tú eliges la casilla. Si sale por la última zona, queda fuera (+3 Energía para ti y el rival toma el Impulso). Después se retiran todos los orbes y Trabas rivales.</li>
         <li><b>Avance de línea:</b> si quedó una zona completamente vacía entre los frentes, el rival avanza, toma el Impulso, tú reubicas gratis y juegas un turno extra.</li>
         <li><b>Tienda:</b> con tu Energía compras la carta destapada de cada espíritu (va arriba de tu mazo); al comprarla queda visible la de abajo. Luego reveló una carta nueva de un mazo de estrategia. Si ya no te quedan cartas en los 3 mazos de estrategia, tira el dado del árbitro: con abanico, termina el partido (en el modo A muerte no se tira y el juego sigue).</li>
-        <li><b>Mazo:</b> si necesitas robar y no hay cartas, puedes retirar 1 carta de tu descarte del juego y luego barajarlo para formar un mazo nuevo.</li>
+        <li><b>Mazo:</b> si necesitas robar y no hay cartas, puedes eliminar 1 carta de tu descarte (sale del juego) y luego barajarlo para formar un mazo nuevo.</li>
         <li><b>Trucos:</b> después de jugar una carta como Acción, puedes activar 1 de tus trucos del mismo elemento del espíritu. Cumple su condición (antes de los dos puntos), aplica el efecto y luego: 🚫 se retira del juego, o 🟨 tira el dado del árbitro y se conserva. <i>Amplificar X</i>: añade X orbes de tu elemento a una casilla donde ya tengas de ese elemento (sin anular). <i>Desviar X</i>: mueve hasta X orbes de tu casilla a una adyacente (conservan dueño). <i>Poner</i>: coloca fichas sin reglas de dispersión ni anulación. <i>Solo</i>: sin aliado en tu casilla. <i>Aislado</i>: sin aliado en tu casilla ni adyacente.</li>
       </ul>
     </details>
@@ -2789,7 +2789,7 @@ function promptInfo() {
         const cnt = {}, first = {}, bs = [];
         pd.options.forEach(o => { cnt[o.cid] = (cnt[o.cid] || 0) + 1; if (first[o.cid] === undefined) first[o.cid] = o.idx; });
         Object.keys(first).sort((a, b) => CARDS[a].cost - CARDS[b].cost).forEach(cid => { const c = CARDS[cid]; bs.push('<button class="rbtn e-' + c.el + '" data-ri="' + first[cid] + '" title="Coste de la carta: ' + c.cost + ' de Energía">' + ICON[c.el] + ' ' + esc(c.n) + ' <span class="rc' + (c.cost === 0 ? ' z' : '') + '">' + c.cost + '</span>' + (cnt[cid] > 1 ? ' <small>×' + cnt[cid] + '</small>' : '') + '</button>'); });
-        return { text: 'Te quedaste sin mazo. Puedes retirar 1 carta de tu descarte del juego antes de barajarlo', btns: bs.join('') + '<button class="secondary" id="btnNoRecycle">No retirar ninguna</button>' };
+        return { text: '¿Quieres eliminar una carta de tu mazo?', btns: bs.join('') + '<button class="secondary" id="btnNoRecycle">No eliminar ninguna</button>' };
       }
       case 'knock': return { text: nm + ' recibió ' + pd.hits + ' golpe' + (pd.hits > 1 ? 's' : '') + ': elige dónde aparece en la ' + zoneName(pd.col), btns: '' };
       case 'place': return pd.mode === 'advance'
@@ -2823,6 +2823,8 @@ function render() {
   const pi = promptInfo(), pt = $('promptText');
   pt.textContent = pt.dataset.flash || (waiting ? 'Resolviendo la acción…' : pi.text);
   pt.classList.toggle('long', pt.textContent.length > 60 || (canAct && !!pi.btns && pt.textContent.length > 40));
+  /* en tu propia secuencia de acciones basta con la simbología (sin el texto descriptivo) */
+  pt.hidden = !!(canAct && pd.cs && !pt.dataset.flash);
   $('promptBtns').innerHTML = canAct ? pi.btns : '';
   $('promptSteps').innerHTML = promptSteps();
   const mineTone = !V.over && !!pd && pd.p === me;
