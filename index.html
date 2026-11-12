@@ -86,6 +86,7 @@
   /* tu turno: dorado con letras negras */
   #prompt.mine{background:linear-gradient(180deg,#ffdd66,#e8b41f); border-color:#fff2b8; color:#111; box-shadow:0 2px 12px #e8b41f66}
   #prompt button{padding:5px 12px; font-size:13px}
+  #prompt button.sico{font-size:22px; line-height:1; padding:6px 14px; min-width:56px}
   #prompt.mine button{background:#1a1408; color:#ffd36b; border:2px solid #1a1408}
   #prompt.mine button.secondary{background:#fff3c4; color:#111; border:2px solid #1a1408}
 
@@ -558,10 +559,12 @@ const TEAMS = [
     abx: 'Las cartas con ✊ te dan 1 ficha de Ímpetu (máximo 4; la ves en tu panel como «✊ Ímpetu x/4»). Las cartas con 💥 y el número 2 son la Embestida: si tienes al menos 2 de Ímpetu, puedes pagarlas (opcional) para robar la carta superior de tu mazo principal y jugarla de inmediato como Acción, además de la que ya estás jugando.' }
 ];
 const TEAM = ['Búhos', 'Zorros'];
-const NAMES = [{ water: 'Nube', earth: 'Roble', fire: 'Candela' }, { water: 'Arroyo', earth: 'Peña', fire: 'Chispa' }];
+/* los espíritus ya no tienen nombre propio: se identifican por el ícono de su elemento */
+const EMO = { water: '💧', earth: '🌿', fire: '🔥' };
+const NAMES = [Object.assign({}, EMO), Object.assign({}, EMO)];
 function setTeams(tm) {
   tm = tm || [0, 1];
-  for (let q = 0; q < 2; q++) { const T = TEAMS[tm[q]] || TEAMS[q]; TEAM[q] = T.n; NAMES[q] = Object.assign({}, T.sp); }
+  for (let q = 0; q < 2; q++) { const T = TEAMS[tm[q]] || TEAMS[q]; TEAM[q] = T.n; NAMES[q] = Object.assign({}, EMO); }
 }
 const ELN = { water: 'Rocío', earth: 'Musgo', fire: 'Brasa' };
 const MAXCHI = 8, HAND = 3;
@@ -773,6 +776,8 @@ const srcPos = g => { const s = CUR && g.spirits.find(x => x.id === CUR); return
 const sum3 = a => a[0] + a[1] + a[2];
 const clampChi = v => Math.max(0, Math.min(MAXCHI, v));
 const nm = s => NAMES[s.p][s.el];
+/* si la lista mezcla espíritus propios y rivales, se indica de quién es cada uno */
+const spLabel = (list, x, p) => nm(x) + (new Set(list.map(y => y.p)).size > 1 ? (x.p === p ? ' (tuyo)' : ' (rival)') : '');
 const holdsAt = (g, i) => g.hold[i][0] + g.hold[i][1];
 const orbsOn = (g, el) => g.tok.reduce((a, t) => a + t[0][EI[el]] + t[1][EI[el]], 0);
 const holdsOn = g => g.hold.reduce((a, h) => a + h[0] + h[1], 0);
@@ -948,7 +953,7 @@ function stepCard(g, fr, st, s) {
       if (!fr.last) return;
       const c = g.spirits.filter(x => x.alive && !x.daze && posOf(x) === fr.last.space);
       if (!c.length) return;
-      const id = c.length === 1 ? c[0].id : ask(g, fr, 'dz', { kind: 'choice', msg: 'Elige a quién aturdir', options: c.map(x => ({ v: x.id, l: nm(x) })) });
+      const id = c.length === 1 ? c[0].id : ask(g, fr, 'dz', { kind: 'choice', msg: 'Elige a quién aturdir', options: c.map(x => ({ v: x.id, l: spLabel(c, x, p) })) });
       once(fr, 'dzp', () => { sOf(g, id).daze = true; ev(g, { t: 'daze', sid: id }); say(g, p, nm(sOf(g, id)) + ' queda aturdido'); });
       return;
     }
@@ -1088,7 +1093,7 @@ function pickSpace(g, fr, key, opts, msg) {
 function pickId(g, fr, key, list, msg) {
   if (key in fr.v) return fr.v[key];
   if (list.length === 1) return (fr.v[key] = list[0].id);
-  return ask(g, fr, key, () => ({ kind: 'choice', msg, options: list.map(x => ({ v: x.id, l: nm(x) })) }));
+  return ask(g, fr, key, () => ({ kind: 'choice', msg, options: list.map(x => ({ v: x.id, l: spLabel(list, x, fr.p) })) }));
 }
 const Bn = (g, fr) => sOf(g, fr.sid);
 const HERE = (g, fr) => posOf(sOf(g, fr.sid));
@@ -2542,7 +2547,7 @@ function renderSetup() {
       return '<div class="dkrow' + (c.kind === 'sig' ? ' sig' : '') + '"><div class="info"><b>' + c.n + (c.vet ? ' <span class="vet" title="Veterano">◈</span>' : '') + '</b> · coste ' + c.cost + (c.kind === 'sig' ? ' · firma' : '') + syRow(c) + '</div>' +
         '<div class="cnt"><button data-d="' + cid + '" data-k="-1"' + (locked || cnt === 0 ? ' disabled' : '') + '>−</button><output>' + cnt + '</output><button data-d="' + cid + '" data-k="1"' + (locked || cnt >= max || n >= 4 ? ' disabled' : '') + '>+</button></div></div>';
     }).join('');
-    return '<div class="dk e-' + e + '"><h4>' + ICON[e] + ' ' + TT.sp[e] + ' <span class="' + (n === 4 ? 'full' : '') + '">' + n + '/4</span></h4>' + rows + '</div>';
+    return '<div class="dk e-' + e + '"><h4>' + ICON[e] + ' ' + ELN[e] + ' <span class="' + (n === 4 ? 'full' : '') + '">' + n + '/4</span></h4>' + rows + '</div>';
   }).join('');
   const tot = EL.reduce((a, e) => a + deckTotal(e), 0);
   $('deckCount').textContent = tot + '/12 cartas';
@@ -2564,9 +2569,9 @@ function renderPos(locked) {
   const at = l => EL.find(e => pos[e] === l);
   $('posStrip').innerHTML = [0, 1, 2, 3, 4].map(l => {
     const e = at(l);
-    return '<button class="posrow' + (e ? ' full' : '') + (e && selPos === e ? ' sel' : '') + '" data-l="' + l + '"' + (locked ? ' disabled' : '') + '><span class="pn">' + (l + 1) + '</span>' + (e ? '<span class="pi">' + ICON[e] + '</span><b>' + esc(T.sp[e]) + '</b>' : 'vacía') + '</button>';
+    return '<button class="posrow' + (e ? ' full' : '') + (e && selPos === e ? ' sel' : '') + '" data-l="' + l + '"' + (locked ? ' disabled' : '') + '><span class="pn">' + (l + 1) + '</span>' + (e ? '<span class="pi">' + ICON[e] + '</span><b>' + esc(ELN[e]) + '</b>' : 'vacía') + '</button>';
   }).join('');
-  $('posInfo').innerHTML = (locked ? '' : (selPos ? '<b>' + ICON[selPos] + ' ' + esc(T.sp[selPos]) + '</b> seleccionado: toca la fila donde quieres que parta (si hay otro espíritu, intercambian lugar).' : 'Toca un espíritu y luego la fila donde quieres que parta. Si eliges la fila de otro espíritu, intercambian lugar.')) +
+  $('posInfo').innerHTML = (locked ? '' : (selPos ? '<b>' + ICON[selPos] + ' ' + esc(ELN[selPos]) + '</b> seleccionado: toca la fila donde quieres que parta (si hay otro espíritu, intercambian lugar).' : 'Toca un espíritu y luego la fila donde quieres que parta. Si eliges la fila de otro espíritu, intercambian lugar.')) +
     '<br><span class="hint">Estas son las 5 casillas de tu zona inicial (la más cercana a la línea media), de arriba hacia abajo. Tu rival elige las suyas en secreto; se revelan al empezar.</span>';
 }
 function maybeStart() {
@@ -2792,7 +2797,7 @@ function promptInfo() {
     switch (pd.kind) {
       case 'play': return { text: (V.turn === me ? 'Tu turno' : '') + ' · Elige una carta de tu mano (' + V.pl[me].hand.length + ' por jugar)', btns: '' };
       case 'space': return { text: pd.msg || 'Elige una casilla resaltada', btns: '' };
-      case 'choice': return { text: pd.msg || 'Elige una opción', btns: pd.options.map((o, i) => '<button data-ci="' + i + '"' + (i === pd.options.length - 1 && /Listo|No/.test(o.l) ? ' class="secondary"' : '') + '>' + esc(o.l) + '</button>').join('') };
+      case 'choice': return { text: pd.msg || 'Elige una opción', btns: pd.options.map((o, i) => '<button data-ci="' + i + '"' + (i === pd.options.length - 1 && /Listo|No/.test(o.l) ? ' class="secondary"' : (/^\p{Extended_Pictographic}/u.test(o.l) ? ' class="sico"' : '')) + '>' + esc(o.l) + '</button>').join('') };
       case 'trickpick': return { text: 'Puedes activar un truco ahora (toca uno resaltado abajo) o continuar', btns: '<button class="secondary" id="btnNoTrick">Sin truco</button>' };
       case 'recycle': {
         const cnt = {}, first = {}, bs = [];
@@ -2862,7 +2867,7 @@ function render() {
     let e = spiritEls[s.id];
     if (!e) {
       e = document.createElement('div'); e.className = 'sp t' + s.p + ' e-' + s.el;
-      e.innerHTML = '<div class="body">' + ICON[s.el] + '<span class="bd"></span></div><span class="nm">' + NAMES[s.p][s.el] + '</span>';
+      e.innerHTML = '<div class="body">' + ICON[s.el] + '<span class="bd"></span></div>';
       spiritLayer.appendChild(e); spiritEls[s.id] = e;
     }
     if (!s.alive) { e.style.display = 'none'; continue; }
@@ -2900,7 +2905,7 @@ function render() {
     if (st.length > 1) {
       covered = '<div class="chips">' + st.slice(0, -1).map((cid, idx) => '<span class="chip' + (buyable(e, idx) ? ' can' : '') + '" data-el="' + e + '" data-idx="' + idx + '">tapada: ' + CARDS[cid].n + ' (' + CARDS[cid].cost + ')</span>').join('') + '</div>';
     }
-    return '<div class="slot e-' + e + '"><div class="slothd">' + ICON[e] + ' ' + NAMES[me][e] + (sp_.alive ? '' : (sp_.out === 'foul' ? ' (descalificado)' : ' (fuera)')) + '</div>' +
+    return '<div class="slot e-' + e + '"><div class="slothd">' + ICON[e] + (sp_.alive ? '' : (sp_.out === 'foul' ? ' (descalificado)' : ' (fuera)')) + '</div>' +
       (top ? cardHTML(top, buyable(e, st.length - 1) ? 'can' : (CARDS[top].cost > V.chi[me] ? 'dim' : ''), 'data-el="' + e + '" data-idx="' + (st.length - 1) + '"') : '<div class="empty">Sin carta</div>') + covered +
       '<div class="deckback ' + (canFlip.includes(e) ? 'can' : '') + '" data-el="' + e + '">Mazo: ' + P.deck[e].length + '</div></div>';
   }).join('');
