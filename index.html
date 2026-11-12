@@ -347,6 +347,9 @@
   .tk.can{outline:3px solid var(--accent); cursor:pointer}
   .tk.gone{opacity:.4; text-decoration:line-through}
   .tk.static{cursor:default}
+  .tk.compact{min-height:0; padding-bottom:5px} .tk.compact b{padding-right:22px}
+  #tip{position:fixed; z-index:90; max-width:270px; background:#16263a; color:#f1f1f1; border:2px solid var(--accent); border-radius:10px; padding:8px 11px; font-size:13px; line-height:1.35; box-shadow:0 6px 22px #000c; pointer-events:none}
+  #tip[hidden]{display:none}
   .setupbar{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; position:sticky; bottom:0; background:linear-gradient(transparent,var(--bg) 40%); padding:14px 0 6px}
   .setupbar button{min-width:160px}
   .chips{display:flex; gap:4px; flex-wrap:wrap; margin-top:3px}
@@ -438,6 +441,7 @@
   <!-- ===== Juego ===== -->
   <div id="vign"></div>
   <div id="abModal" hidden><div class="abbox" id="abBox"></div></div>
+  <div id="tip" hidden></div>
   <div id="cfModal" hidden><div class="abbox" id="cfBox"></div></div>
   <div id="floatBtns"><button id="btnSnd" class="secondary" title="Sonido activado/desactivado" aria-label="Sonido">🔊</button><button id="btnLeave" class="secondary" title="Salir de la partida" aria-label="Salir">Salir</button></div>
   <section id="game" hidden>
@@ -472,9 +476,9 @@
           <button id="btnCancel" class="secondary">Cancelar</button>
         </div>
 
-        <div class="secttl">Tu tienda: una carta visible por espíritu. Solo se compra la de arriba.</div>
+        <div class="secttl">Tu tienda</div>
         <div class="slots" id="row"></div>
-        <div class="secttl">Tus trucos (se activan después de jugar una carta como Acción de un espíritu de su mismo elemento)</div>
+        <div class="secttl">Tus trucos</div>
         <div class="tslots" id="myTricks"></div>
         <div class="secttl">Tienda del rival</div>
         <div class="minirow" id="oppRow"></div>
@@ -2709,9 +2713,11 @@ function cardHTML(cid, cls, attrs) {
   return '<div class="card e-' + c.el + (c.kind === 'sig' ? ' sig' : '') + ' ' + (cls || '') + '" ' + (attrs || '') + '">' +
     '<span class="cost">' + c.cost + '</span><div class="nm">' + ICON[c.el] + ' ' + c.n + (c.vet ? ' <span class="vet" title="Veterano">◈</span>' : '') + '</div>' + syRow(c) + '</div>';
 }
-function trickHTML(slot, id, gone, cls, attrs) {
+function trickHTML(slot, id, gone, cls, attrs, compact) {
   const t = TR[id];
-  return '<div class="tk e-' + t.el + ' static ' + (gone ? 'gone ' : '') + (cls || '') + '" ' + (attrs || '') + '><b>' + t.n + '</b><span class="ic">' + (t.icon === 'R' ? '🚫' : '🟨') + '</span>' + (gone ? ' <i>(retirado)</i>' : esc(t.txt)) + '</div>';
+  /* compact: solo el nombre; la explicación aparece al pasar el mouse (o con pulsación larga en el móvil) */
+  const tip = compact && !gone ? ' data-tip="' + esc(t.txt) + '"' : '';
+  return '<div class="tk e-' + t.el + ' static ' + (gone ? 'gone ' : '') + (compact ? 'compact ' : '') + (cls || '') + '" ' + (attrs || '') + tip + '><b>' + t.n + '</b><span class="ic">' + (t.icon === 'R' ? '🚫' : '🟨') + '</span>' + (gone ? ' <i>(retirado)</i>' : compact ? '' : esc(t.txt)) + '</div>';
 }
 function buildBoard() {
   if (builtFor === me) return;
@@ -2916,7 +2922,7 @@ function render() {
 
   /* trucos */
   const usable = canAct && pd.kind === 'trickpick' ? pd.options.map(o => o.slot) : [];
-  $('myTricks').innerHTML = P.tricks.map((t, i) => trickHTML(i, t.id, t.gone, usable.includes(i) ? 'can' : '', 'data-slot="' + i + '"')).join('');
+  $('myTricks').innerHTML = P.tricks.map((t, i) => trickHTML(i, t.id, t.gone, usable.includes(i) ? 'can' : '', 'data-slot="' + i + '"', true)).join('');
   $('myTricks').querySelectorAll('.tk').forEach(e => e.classList.toggle('static', !e.classList.contains('can')));
   $('oppTricks').innerHTML = V.pl[1 - me].tricks.map((t, i) => trickHTML(i, t.id, t.gone, '', '')).join('');
 
@@ -3363,6 +3369,26 @@ function renderMode() {
 try { if (localStorage.getItem('duelo-modo') === 'death') gameMode = 'death'; } catch (e) {}
 renderMode();
 $('modePick').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; gameMode = b.dataset.m === 'death' ? 'death' : 'normal'; try { localStorage.setItem('duelo-modo', gameMode); } catch (e2) {} renderMode(); });
+/* Descripción de los trucos: al pasar el mouse, o con pulsación larga en pantallas táctiles */
+(() => {
+  const tip = $('tip'); let lp = null, hideT = null, suppress = false;
+  const show = el => {
+    tip.textContent = el.dataset.tip; tip.hidden = false;
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2)) + 'px';
+    tip.style.top = (r.top - h - 8 >= 6 ? r.top - h - 8 : r.bottom + 8) + 'px';
+  };
+  const hide = () => { tip.hidden = true; clearTimeout(lp); clearTimeout(hideT); };
+  document.addEventListener('mouseover', e => { const t = e.target.closest && e.target.closest('.tk[data-tip]'); if (t) show(t); else if (!tip.hidden) hide(); });
+  document.addEventListener('touchstart', e => {
+    const t = e.target.closest && e.target.closest('.tk[data-tip]');
+    if (!t) { hide(); return; }
+    clearTimeout(lp); lp = setTimeout(() => { suppress = true; show(t); clearTimeout(hideT); hideT = setTimeout(hide, 3500); }, 450);
+  }, { passive: true });
+  ['touchend', 'touchmove', 'touchcancel'].forEach(ev => document.addEventListener(ev, () => { clearTimeout(lp); if (suppress) setTimeout(() => { suppress = false; }, 700); }, { passive: true }));
+  document.addEventListener('click', e => { if (suppress) { suppress = false; e.stopPropagation(); e.preventDefault(); } }, true);
+  document.addEventListener('scroll', hide, true);
+})();
 /* Terminar compras: si aún se puede comprar algo, pide confirmación */
 function confirmDone() {
   const pd = V && V.pending, n = pd && pd.kind === 'gain' && pd.options ? pd.options.length : 0;
