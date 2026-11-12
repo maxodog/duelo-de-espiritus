@@ -247,6 +247,7 @@
   .teampick span{color:var(--muted); font-size:14px}
   .teampick button{background:#1d2d40; color:var(--ink); border:2px solid transparent}
   .teampick button.on{border-color:var(--accent); background:#33415f}
+  .teampick button.drawn{border-color:#8f9bb5; border-style:dashed; background:#2a3a55}
   .teampick button{padding:8px 11px; font-size:14px}
   .teamab{background:#16263a; border:1px solid #2a4058; border-radius:12px; padding:8px 12px; margin:4px 0 6px; font-size:13.5px; line-height:1.35}
   .teamab b{color:var(--accent)}
@@ -2190,7 +2191,7 @@ let wantMine = false, wantTheirs = false, selCard = null, waiting = false;
 let builtFor = -1, cells = {}, spiritEls = {}, spiritLayer = null;
 let gameMode = 'normal', fxBusyUntil = 0;
 let peerTeam = null, selPos = null;
-let vsAI = false, aiLevel = 3, aiTimer = null, myTeam = 0, oppTeam = 1, aiTeamSel = -1, endDismissed = false;
+let vsAI = false, aiLevel = 3, aiTimer = null, myTeam = 0, myTeamRnd = true, oppTeam = 1, aiTeamSel = -1, endDismissed = false;
 const aiP = () => 1 - me;
 const oppN = () => vsAI ? 'la máquina' : 'tu amigo', OppN = () => vsAI ? 'La máquina' : 'Tu amigo';
 let vq = [], vBusy = false, vTimerQ = null;
@@ -2500,7 +2501,7 @@ function onData(m) {
     enterSetup(false);
   } else if (m.t === 'pick' && Number.isInteger(m.team) && m.team >= 0 && m.team < TEAMS.length) {
     peerTeam = m.team;
-    if (inSetup && !isHost && !readyMine && myTeam === peerTeam) { changeMyTeam(firstFreeTeam(peerTeam)); sendPick(); $('setupMsg').textContent = 'Tu amigo ya había elegido ese equipo: se cambió el tuyo.'; }
+    if (inSetup && !isHost && !readyMine && myTeam === peerTeam) { changeMyTeam(myTeamRnd ? drawMyTeam(true) : firstFreeTeam(peerTeam)); sendPick(); $('setupMsg').textContent = 'Tu amigo ya había elegido ese equipo: se cambió el tuyo.'; }
     if (inSetup) renderSetup();
   } else if (m.t === 'cfg' && isHost) {
     const e = validateCfg(m.cfg, m.tm) || (m.tm === myTeam ? 'Los dos jugadores no pueden usar el mismo equipo: elige otro.' : null);
@@ -2528,9 +2529,16 @@ function firstFreeTeam(not) { for (let k = 0; k < TEAMS.length; k++) if (k !== n
 function drawAiTeam() { const pool = TEAMS.map((T, k) => k).filter(k => k !== myTeam); return pool[Math.floor(Math.random() * pool.length)]; }
 function sendPick() { if (!vsAI && conn && conn.open) send({ t: 'pick', team: myTeam }); }
 function changeMyTeam(k) { myTeam = k; myCfg = defaultCfg(k); selPos = null; }
+/* equipo aleatorio: por defecto se sortea uno (distinto del del rival y, si se puede, del actual) */
+function drawMyTeam(avoidCur) {
+  const t = takenTeam(); let pool = TEAMS.map((T, k) => k).filter(k => k !== t && !(avoidCur && k === myTeam));
+  if (!pool.length) pool = TEAMS.map((T, k) => k).filter(k => k !== t);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 function enterSetup(announce) {
   inSetup = true; readyMine = false; readyTheirs = false; cfgMine = null; cfgOther = null; waiting = false; endDismissed = false; clearViews();
   peerTeam = null; selPos = null;
+  if (myTeamRnd) changeMyTeam(drawMyTeam(false));
   if (vsAI) { if (aiTeamSel === myTeam) aiTeamSel = -1; oppTeam = aiTeamSel >= 0 ? aiTeamSel : drawAiTeam(); cfgOther = AIKit.cfgFor(aiLevel, oppTeam); readyTheirs = true; }
   if (isHost && announce) send({ t: 'setup', mode: gameMode });
   sendPick();
@@ -2554,7 +2562,7 @@ function showAbility(k) {
 function renderSetup() {
   fixTricks();
   const locked = readyMine;
-  $('teamPick').innerHTML = '<span>Tu equipo</span>' + TEAMS.map((T, k) => '<button data-team="' + k + '" title="' + esc(k === takenTeam() ? 'Ya lo eligió tu rival' : T.abn + ': ' + T.abt) + '" class="' + (k === myTeam ? 'on' : '') + (k === takenTeam() ? ' teamtaken' : '') + '"' + (locked || k === takenTeam() ? ' disabled' : '') + '>' + T.em + ' ' + T.n + '</button>').join('');
+  $('teamPick').innerHTML = '<span>Tu equipo</span><button data-team="r" class="rnd' + (myTeamRnd ? ' on' : '') + '"' + (locked ? ' disabled' : '') + ' title="Se sortea un equipo; puedes volver a sortear o elegir uno tú">🎲 Aleatorio</button>' + TEAMS.map((T, k) => '<button data-team="' + k + '" title="' + esc(k === takenTeam() ? 'Ya lo eligió tu rival' : T.abn + ': ' + T.abt) + '" class="' + (k === myTeam ? (myTeamRnd ? 'drawn' : 'on') : '') + (k === takenTeam() ? ' teamtaken' : '') + '"' + (locked || k === takenTeam() ? ' disabled' : '') + '>' + T.em + ' ' + T.n + '</button>').join('');
   const TT = TEAMS[myTeam];
   $('teamAb').innerHTML = abHTML(myTeam, true);
   const ao = $('oppAb'); ao.hidden = !(vsAI && aiTeamSel >= 0); if (!ao.hidden) ao.innerHTML = '<b>Equipo de la máquina:</b> ' + abHTML(aiTeamSel, false);
@@ -3512,8 +3520,8 @@ $('trickGrid').addEventListener('click', e => {
 });
 $('teamPick').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || readyMine) return;
-  const k = +b.dataset.team; if (k === takenTeam()) return;
-  changeMyTeam(k);
+  if (b.dataset.team === 'r') { myTeamRnd = true; changeMyTeam(drawMyTeam(true)); }
+  else { const k = +b.dataset.team; if (k === takenTeam()) return; myTeamRnd = false; changeMyTeam(k); }
   if (vsAI && aiTeamSel < 0 && oppTeam === myTeam) { oppTeam = drawAiTeam(); cfgOther = AIKit.cfgFor(aiLevel, oppTeam); }
   sendPick(); renderSetup();
 });
