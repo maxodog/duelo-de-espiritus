@@ -256,6 +256,11 @@
   #abModal .abbox{background:#16263a; border:2px solid var(--accent); border-radius:14px; max-width:460px; width:100%; padding:14px 16px; box-shadow:0 8px 40px #000; line-height:1.4; font-size:14.5px}
   #abModal h3{margin:0 0 6px; font-size:18px} #abModal p{margin:6px 0}
   #abModal .x{margin-top:8px; width:100%}
+  #cfModal{position:fixed; inset:0; z-index:80; background:rgba(5,10,18,.72); display:grid; place-items:center; padding:14px}
+  #cfModal[hidden]{display:none}
+  #cfModal .abbox{background:#16263a; border:2px solid var(--accent); border-radius:14px; max-width:420px; width:100%; padding:16px 18px; box-shadow:0 8px 40px #000; line-height:1.4; font-size:15px; text-align:center}
+  #cfModal h3{margin:0 0 8px; font-size:19px}
+  #cfModal .cfb{display:flex; gap:8px; margin-top:14px} #cfModal .cfb button{flex:1}
   .modes{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0 4px}
   .modes button{padding:9px 4px; font-size:14px; background:#1d2d40; color:var(--ink); border:2px solid transparent}
   .modes button.on{border-color:var(--accent); background:#2b4159}
@@ -432,6 +437,7 @@
   <!-- ===== Juego ===== -->
   <div id="vign"></div>
   <div id="abModal" hidden><div class="abbox" id="abBox"></div></div>
+  <div id="cfModal" hidden><div class="abbox" id="cfBox"></div></div>
   <div id="floatBtns"><button id="btnSnd" class="secondary" title="Sonido activado/desactivado" aria-label="Sonido">🔊</button><button id="btnLeave" class="secondary" title="Salir de la partida" aria-label="Salir">Salir</button></div>
   <section id="game" hidden>
     <div id="banner" hidden></div>
@@ -2122,6 +2128,9 @@ const AIKit = (function () {
     if (level <= 2) return randomCfg(team);
     const c = defaultCfg(team);
     if (level === 3) c.tricks = shuf(trickPool(team)).slice(0, 3);
+    /* todos los niveles reparten sus espíritus en filas distintas cada partida */
+    const rows = shuf([0, 1, 2, 3, 4]).slice(0, 3);
+    c.pos = { water: rows[0], earth: rows[1], fire: rows[2] };
     return c;
   }
 
@@ -3286,7 +3295,7 @@ function fxEvent(e) {
 
 /* cola de estados: permite mostrar la carta del rival y sus efectos en orden */
 function applyView(view, evs) {
-  waiting = false; V = view; if (V.tm) setTeams(V.tm); showSection('game');
+  waiting = false; V = view; if (!(V.pending && V.pending.kind === 'gain' && V.pending.p === me)) $('cfModal').hidden = true; if (V.tm) setTeams(V.tm); showSection('game');
   if (window.__onApply) window.__onApply(view, evs, evSpan(evs));
   if (view.over && evs.some(e => e.t === 'out')) { if (!window.__noFxDelay) { overlayAfter = Date.now() + 3450; clearTimeout(vTimer); vTimer = setTimeout(render, 3525); } }
   render(); playEvents(evs);
@@ -3349,6 +3358,18 @@ function renderMode() {
 try { if (localStorage.getItem('duelo-modo') === 'death') gameMode = 'death'; } catch (e) {}
 renderMode();
 $('modePick').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; gameMode = b.dataset.m === 'death' ? 'death' : 'normal'; try { localStorage.setItem('duelo-modo', gameMode); } catch (e2) {} renderMode(); });
+/* Terminar compras: si aún se puede comprar algo, pide confirmación */
+function confirmDone() {
+  const pd = V && V.pending, n = pd && pd.kind === 'gain' && pd.options ? pd.options.length : 0;
+  if (!n) { doAct({ done: true }); return; }
+  $('cfBox').innerHTML = '<h3>¿Terminar las compras?</h3><div>Todavía puedes comprar ' + (n === 1 ? '1 carta' : n + ' cartas') + ' con tu Energía (' + V.chi[me] + ').</div>' +
+    '<div class="cfb"><button id="cfKeep">Seguir comprando</button><button class="secondary" id="cfEnd">Terminar compras</button></div>';
+  $('cfModal').hidden = false;
+}
+$('cfModal').addEventListener('click', e => {
+  if (e.target.id === 'cfEnd') { $('cfModal').hidden = true; doAct({ done: true }); }
+  else if (e.target.id === 'cfKeep' || e.target.id === 'cfModal') $('cfModal').hidden = true;
+});
 $('abModal').addEventListener('click', e => { if (e.target.id === 'abModal' || e.target.id === 'abClose') $('abModal').hidden = true; });
 $('gtop').addEventListener('click', e => { const b = e.target.closest('.abtn'); if (b) showAbility(+b.dataset.ab); });
 $('btnAI').addEventListener('click', startAI);
@@ -3382,7 +3403,7 @@ $('myTricks').addEventListener('click', e => {
 });
 $('promptBtns').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'btnDone') doAct({ done: true });
+  if (b.id === 'btnDone') confirmDone();
   else if (b.id === 'btnSkip') doAct({ skip: true });
   else if (b.id === 'btnNoTrick') doAct({ skip: true });
   else if (b.id === 'btnNoRecycle') doAct({ skip: true });
