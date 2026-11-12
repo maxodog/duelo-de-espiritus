@@ -78,9 +78,16 @@
   .mini{background:#223349; border-radius:8px; padding:1px 6px; font-size:11px; color:var(--muted); border-left:3px solid var(--el)}
   .mini.e-water,.card.e-water,.slot.e-water{--el:var(--water)} .mini.e-earth,.card.e-earth,.slot.e-earth{--el:var(--earth)} .mini.e-fire,.card.e-fire,.slot.e-fire{--el:var(--fire)}
 
-  #prompt{width:100%; background:var(--panel2); border-radius:12px; padding:5px 12px; font-size:14px; font-weight:700; text-align:center; min-height:40px; display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center}
-  #prompt.mine{border:2px solid var(--accent)}
+  #prompt{width:100%; background:var(--panel2); border:2px solid transparent; border-radius:12px; padding:6px 12px; font-size:14px; font-weight:700; text-align:center; min-height:44px; display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center; justify-content:safe center}
+  #promptText{font-family:"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; font-size:clamp(16px, 4.3vw, 20px); font-weight:700; line-height:1.25; letter-spacing:.2px}
+  /* lo que hace el rival: morado oscuro con letras blancas */
+  #promptText.long{font-size:clamp(14px, 3.6vw, 16px); line-height:1.2}
+  #prompt.opp{background:linear-gradient(180deg,#4b2894,#331a6b); border-color:#8f69e6; color:#fff; box-shadow:0 2px 10px #2a145a88}
+  /* tu turno: dorado con letras negras */
+  #prompt.mine{background:linear-gradient(180deg,#ffdd66,#e8b41f); border-color:#fff2b8; color:#111; box-shadow:0 2px 12px #e8b41f66}
   #prompt button{padding:5px 12px; font-size:13px}
+  #prompt.mine button{background:#1a1408; color:#ffd36b; border:2px solid #1a1408}
+  #prompt.mine button.secondary{background:#fff3c4; color:#111; border:2px solid #1a1408}
 
   .boardwrap{width:100%; container-type:inline-size; position:relative}
   /* efectos */
@@ -192,6 +199,7 @@
   }
   .symkey{padding:6px 10px; font-size:12px} .symlist{display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:8px; align-items:center; color:var(--ink)} .symlist span.it{display:inline-flex; gap:7px; align-items:center}
   .symkey .sy{cursor:default}
+  .symlist .sy.em{color:#ffd36b}
   #promptSteps:empty{display:none}
   .pcard{display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center; background:#f3e9d2; color:#2a2118; border-top:5px solid var(--el,#888); border-radius:9px; padding:4px 10px 5px}
   .pcard.e-water{--el:var(--water)} .pcard.e-earth{--el:var(--earth)} .pcard.e-fire{--el:var(--fire)}
@@ -203,6 +211,8 @@
   @keyframes curp{from{background:#fff3c4}to{background:#ffd966}}
   .rbtn{border-left:6px solid var(--el); text-align:left}
   .rbtn small{font-weight:600; opacity:.75; margin-left:4px}
+  .rbtn .rc{display:inline-grid; place-items:center; min-width:20px; height:20px; border-radius:50%; background:#2a2118; color:#ffd36b; font-size:11px; font-weight:800; margin-left:4px; vertical-align:middle}
+  .rbtn .rc.z{box-shadow:0 0 0 2px #2a2118, 0 0 0 3.5px #ffd36b}
   .rbtn.e-water{--el:var(--water)} .rbtn.e-earth{--el:var(--earth)} .rbtn.e-fire{--el:var(--fire)}
   .symlist .it{position:relative; cursor:help; padding:3px 7px; border-radius:8px}
   .symlist .it:hover{background:#243247}
@@ -440,11 +450,11 @@
           <div class="board" id="board"></div>
           <div id="oppCard" hidden></div><div id="bigMsg" hidden></div><div id="toast" hidden></div><div id="dice" hidden></div>
         </div>
-        <div class="legend"><span id="modeLeg"></span>⚠ golpes que recibirá ese espíritu al terminar su dueño · ⬣ octágono = orbe de ataque perforante · ◆ Traba · 💢 Presión (duplica los golpes) · 💫 aturdido · 🟨 falta · ⤓ derribado. El aro indica el equipo. El color de cada zona sigue a quien la ocupa.</div>
+        <div class="legend"><span id="modeLeg"></span></div>
       </div>
 
       <div class="side">
-        <details class="symkey"><summary>Símbolos de las cartas</summary>
+        <details class="symkey"><summary>Simbología del juego</summary>
           <div class="symlist" id="symList"></div>
         </details>
         <div class="secttl">Tu mano <span id="playedInfo"></span></div>
@@ -2665,6 +2675,9 @@ function sy(st) {
     case 'rally': return '<span class="sy em"' + tip + '>✊</span>';
     case 'blitz': return '<span class="sy em"' + tip + '>💥<i class="rg">2</i></span>';
     case 'vet': return '<span class="sy em"' + tip + '>◈</span>';
+    case 'warn': return '<span class="sy em"' + tip + '>⚠</span>';
+    case 'down': return '<span class="sy em"' + tip + '>⤓</span>';
+    case 'ring': return '<span class="sy em"' + tip + '>◎</span>';
   }
   return '';
 }
@@ -2775,7 +2788,7 @@ function promptInfo() {
       case 'recycle': {
         const cnt = {}, first = {}, bs = [];
         pd.options.forEach(o => { cnt[o.cid] = (cnt[o.cid] || 0) + 1; if (first[o.cid] === undefined) first[o.cid] = o.idx; });
-        Object.keys(first).forEach(cid => { const c = CARDS[cid]; bs.push('<button class="rbtn e-' + c.el + '" data-ri="' + first[cid] + '">' + ICON[c.el] + ' ' + esc(c.n) + ' <small>' + ELN[c.el] + (cnt[cid] > 1 ? ' · ×' + cnt[cid] : '') + '</small></button>'); });
+        Object.keys(first).sort((a, b) => CARDS[a].cost - CARDS[b].cost).forEach(cid => { const c = CARDS[cid]; bs.push('<button class="rbtn e-' + c.el + '" data-ri="' + first[cid] + '" title="Coste de la carta: ' + c.cost + ' de Energía">' + ICON[c.el] + ' ' + esc(c.n) + ' <span class="rc' + (c.cost === 0 ? ' z' : '') + '">' + c.cost + '</span>' + (cnt[cid] > 1 ? ' <small>×' + cnt[cid] + '</small>' : '') + '</button>'); });
         return { text: 'Te quedaste sin mazo. Puedes retirar 1 carta de tu descarte del juego antes de barajarlo', btns: bs.join('') + '<button class="secondary" id="btnNoRecycle">No retirar ninguna</button>' };
       }
       case 'knock': return { text: nm + ' recibió ' + pd.hits + ' golpe' + (pd.hits > 1 ? 's' : '') + ': elige dónde aparece en la ' + zoneName(pd.col), btns: '' };
@@ -2809,9 +2822,11 @@ function render() {
 
   const pi = promptInfo(), pt = $('promptText');
   pt.textContent = pt.dataset.flash || (waiting ? 'Resolviendo la acción…' : pi.text);
+  pt.classList.toggle('long', pt.textContent.length > 60 || (canAct && !!pi.btns && pt.textContent.length > 40));
   $('promptBtns').innerHTML = canAct ? pi.btns : '';
   $('promptSteps').innerHTML = promptSteps();
-  $('prompt').classList.toggle('mine', canAct);
+  const mineTone = !V.over && !!pd && pd.p === me;
+  $('prompt').classList.toggle('mine', mineTone); $('prompt').classList.toggle('opp', !V.over && !mineTone);
 
   /* tablero */
   for (const k in cells) {
@@ -3296,6 +3311,7 @@ function clearViews() { vq = []; vBusy = false; clearTimeout(vTimerQ); clearTime
 
 /* ---------- eventos ---------- */
 $('symList').innerHTML = [
+  [{ t: 'warn' }, 'Golpes pendientes', 'El triángulo ⚠ con un número, junto a un espíritu, indica cuántos golpes recibirá cuando termine el turno de su dueño si nada cambia: son los orbes rivales de su casilla, y el total se duplica por cada ficha de Presión que haya ahí.'],
   [{ t: 'atk', p: 2, r: 1, prc: false }, 'Ataque', 'Pone orbes de tu espíritu en una casilla que esté a su alcance. El número grande es el poder (cuántos orbes) y el chico es el alcance (a cuántas casillas de distancia). Si hay orbes rivales en esa casilla, se anulan 1 a 1 antes de que queden los tuyos. No puedes atacar tu propia casilla ni una donde ya tengas orbes de ese elemento.'],
   [{ t: 'atk', p: 3, r: 2, prc: true }, 'Perforante', 'Ataque perforante: igual que un ataque, pero NO anula los orbes rivales de la casilla; solo deja los tuyos. En el tablero sus orbes se ven como octágonos.'],
   [{ t: 'move' }, 'Mover', 'Mueve a tu espíritu 1 casilla dentro de su misma zona. Si hay una Traba en su casilla, el Mover quita la Traba en vez de moverlo.'],
@@ -3310,6 +3326,8 @@ $('symList').innerHTML = [
   [{ t: 'rally' }, 'Ímpetu', 'Habilidad de los Canguliebres: ganas 1 ficha de Ímpetu (máximo 4; si ya tienes 4 el ícono se ignora).'],
   [{ t: 'blitz' }, 'Embestida', 'Habilidad de los Canguliebres: puedes gastar 2 fichas de Ímpetu para robar la carta superior de tu mazo principal y jugarla de inmediato como Acción.'],
   [{ t: 'vet' }, 'Veterano ◈', 'Habilidad de los Armatigres: si usas por Energía una carta con este símbolo, ganas 2 de Energía en vez de 1. Jugada como Acción se usa normal.'],
+  [{ t: 'down' }, 'Derribado', 'Un espíritu derribado (⤓) no puede activarse en su próximo turno: sus cartas solo se pueden usar por Energía.'],
+  [{ t: 'ring' }, 'Aro y color de zona', 'El aro de cada espíritu y de cada orbe indica de qué equipo es. El color de cada zona del tablero sigue a quien la ocupa en ese momento.'],
   [{ t: 'fan' }, 'Dado del árbitro', 'Se tira el dado del árbitro: si sale abanico amarillo, el espíritu recibe una falta. Con 2 faltas queda descalificado (sin dar Energía ni Impulso al rival).']
 ].map((x, i, arr) => '<span class="it' + (i >= arr.length / 2 ? ' r' : '') + '" data-tip="' + esc(x[2]) + '">' + sy(x[0]) + x[1] + '</span>').join('');
 function renderLevels() {
