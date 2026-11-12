@@ -103,6 +103,8 @@
   .fx.dust{width:3cqw; height:3cqw; border-radius:50%; background:radial-gradient(circle, var(--c), transparent 70%); opacity:.8}
   .fx.glow{width:12cqw; height:12cqw; border-radius:50%; background:radial-gradient(circle, var(--c) 0, transparent 65%)}
   .fx.emo{font-size:5.6cqw; line-height:1; text-shadow:0 0 1cqw #000}
+  .fx.emo.glyph{font-size:4.6cqw; text-shadow:0 0 1.4cqw var(--c), 0 0 .5cqw #000}
+  .fx.emo.glyph.prc{font-size:5.4cqw; filter:drop-shadow(0 0 .9cqw #fff)}
   .fx.ftext{font-weight:900; font-size:3.8cqw; text-shadow:0 .3cqw 0 #000, 0 0 1cqw #000; white-space:nowrap}
   .fx.ghost{width:8.6cqw; height:8.6cqw; border-radius:50%; display:grid; place-items:center; font-size:4.6cqw; background:#222; border:.7cqw solid var(--t0)}
   .fx.ghost.t1{border-color:var(--t1)}
@@ -134,6 +136,9 @@
   .orbs{position:absolute; left:0; right:0; bottom:2%; display:flex; flex-wrap:wrap; justify-content:center; gap:.7cqw; padding:0 1.5cqw; pointer-events:none}
   .orb{width:2.4cqw; height:2.4cqw; border-radius:50%; background:var(--el); box-shadow:0 0 0 .5cqw var(--ring), 0 .3cqw .5cqw #0008}
   .orb.t0{--ring:var(--t0)} .orb.t1{--ring:var(--t1)}
+  .orb{position:relative} .orb.mul{margin-right:.9cqw}
+  .orb .x{position:absolute; right:-1.2cqw; bottom:-1cqw; z-index:2; text-decoration:none; font-style:normal; font-weight:900; font-size:1.7cqw; line-height:1; color:#fff; background:#000d; border-radius:99px; padding:.15cqw .45cqw; box-shadow:0 0 0 .2cqw #fff6}
+  .orb.prc .x{right:auto; bottom:auto; left:50%; top:50%; transform:translate(-50%,-50%); font-size:1.5cqw; background:none; box-shadow:none; text-shadow:0 0 .3cqw #000,0 0 .3cqw #000}
   .orb.e-water{--el:var(--water)} .orb.e-earth{--el:var(--earth)} .orb.e-fire{--el:var(--fire)}
   .hitb{position:absolute; top:3%; right:3%; background:#e11d48; color:#fff; font-weight:800; border-radius:99px; padding:0 1cqw; font-size:max(9px,1.9cqw); z-index:2; pointer-events:none}
   #spirits{position:absolute; inset:0; pointer-events:none; z-index:2}
@@ -2665,7 +2670,11 @@ function doAct(input) {
   }
 }
 let flashTimer = null;
-function flash(t) { const p = $('promptText'); p.dataset.flash = t; clearTimeout(flashTimer); flashTimer = setTimeout(() => { delete p.dataset.flash; render(); }, 3300); render(); }
+/* evita reconstruir el DOM cuando el contenido no cambió (así un clic no se pierde y las orbes ocultas no reaparecen) */
+function setHTML(el, h) { if (el._h !== h) { el.innerHTML = h; el._h = h; } }
+function flash(t, dur) { const p = $('promptText'); p.dataset.flash = t; clearTimeout(flashTimer); flashTimer = setTimeout(() => { delete p.dataset.flash; render(); }, dur || 3300); render(); }
+/* los avisos de lo que ocurre en la jugada van solo en el cuadro superior, para no tapar el tablero */
+function note(txt, dur) { if (V) flash(txt, dur || 1600); }
 
 /* ---------- dibujo ---------- */
 const dcol = c => me === 0 ? c : 5 - c;
@@ -2851,7 +2860,7 @@ function render() {
 
   $('panelOpp').className = 'panel t' + (1 - me) + (!V.over && V.turn === 1 - me ? ' turn' : '');
   $('panelMe').className = 'panel t' + me + (!V.over && V.turn === me ? ' turn' : '');
-  $('panelOpp').innerHTML = panelHTML(1 - me); $('panelMe').innerHTML = panelHTML(me);
+  setHTML($('panelOpp'), panelHTML(1 - me)); setHTML($('panelMe'), panelHTML(me));
   $('modeLeg').innerHTML = V.mode === 'death' ? '<span class="modetag">☠ A muerte</span> ' : '';
 
   const pi = promptInfo(), pt = $('promptText');
@@ -2859,8 +2868,8 @@ function render() {
   pt.classList.toggle('long', pt.textContent.length > 60 || (canAct && !!pi.btns && pt.textContent.length > 40));
   /* en tu propia secuencia de acciones basta con la simbología (sin el texto descriptivo) */
   pt.hidden = !!(canAct && pd.cs && !pt.dataset.flash);
-  $('promptBtns').innerHTML = canAct ? pi.btns : '';
-  $('promptSteps').innerHTML = promptSteps();
+  setHTML($('promptBtns'), canAct ? pi.btns : '');
+  setHTML($('promptSteps'), promptSteps());
   const mineTone = !V.over && !!pd && pd.p === me;
   $('prompt').classList.toggle('mine', mineTone); $('prompt').classList.toggle('opp', !V.over && !mineTone);
 
@@ -2868,12 +2877,16 @@ function render() {
   for (const k in cells) {
     const i = +k, c = cells[k], t = V.tok[i], hd = V.hold[i];
     let h = '';
-    for (const o of [me, 1 - me]) for (let e = 0; e < 3; e++) { const pp = V.pt ? V.pt[i][o][e] : 0; for (let n = 0; n < t[o][e]; n++) h += '<i class="orb t' + o + ' e-' + EL[e] + (n < pp ? ' prc' : '') + '"></i>'; }
-    c.orbs.innerHTML = h;
+    for (const o of [me, 1 - me]) for (let e = 0; e < 3; e++) {
+      const pp = Math.min(V.pt ? V.pt[i][o][e] : 0, t[o][e]), pl = t[o][e] - pp;
+      const og = (n, prc) => n > 0 ? '<i class="orb t' + o + ' e-' + EL[e] + (prc ? ' prc' : '') + (n > 1 ? ' mul' : '') + '" data-o="' + o + '" data-e="' + EL[e] + '">' + (n > 1 ? '<s class="x">×' + n + '</s>' : '') + '</i>' : '';
+      h += og(pl, false) + og(pp, true);
+    }
+    setHTML(c.orbs, h);
     let hh = '';
     for (const o of [me, 1 - me]) for (let n = 0; n < hd[o]; n++) hh += '<i class="hold t' + o + '"><b>◆</b></i>';
     for (const o of [me, 1 - me]) for (let n = 0; n < V.prs[i][o]; n++) hh += '<i class="prs t' + o + '" title="Presión">💢</i>';
-    c.holds.innerHTML = hh;
+    setHTML(c.holds, hh);
     const tot = sum3(t[0]) + sum3(t[1]) + hd[0] + hd[1] + V.prs[i][0] + V.prs[i][1];
     if (tot !== c.total) { c.el.classList.remove('flash'); void c.el.offsetWidth; c.el.classList.add('flash'); c.total = tot; }
     c.el.classList.toggle('can', opts.has(i));
@@ -2905,8 +2918,8 @@ function render() {
   const P = V.pl[me], hand = $('hand');
   const canPlay = canAct && pd.kind === 'play';
   if (!canPlay) selCard = null;
-  hand.innerHTML = P.hand.map((cid, i) => cardHTML(cid, (canPlay ? 'can ' : '') + (selCard === i ? 'sel' : ''), 'data-idx="' + i + '"')).join('') ||
-    '<div class="empty">Sin cartas</div>';
+  setHTML(hand, P.hand.map((cid, i) => cardHTML(cid, (canPlay ? 'can ' : '') + (selCard === i ? 'sel' : ''), 'data-idx="' + i + '"')).join('') ||
+    '<div class="empty">Sin cartas</div>');
   $('playedInfo').textContent = P.played.length ? '· En juego este turno: ' + P.played.map(c => CARDS[c].n).join(', ') : '';
   const mp = $('modePanel'); mp.hidden = !(canPlay && selCard !== null);
   if (!mp.hidden) {
@@ -2919,7 +2932,7 @@ function render() {
   /* tienda */
   const canBuy = canAct && pd.kind === 'gain' ? pd.options : [], canFlip = canAct && pd.kind === 'flip' ? pd.options : [];
   const buyable = (e, idx) => canBuy.some(o => o.el === e && o.idx === idx);
-  $('row').innerHTML = EL.map(e => {
+  setHTML($('row'), EL.map(e => {
     const st = P.row[e], top = st.length ? st[st.length - 1] : null, sp_ = spiritOf(V, me, e);
     let covered = '';
     if (st.length > 1) {
@@ -2928,17 +2941,17 @@ function render() {
     return '<div class="slot e-' + e + '"><div class="slothd">' + ICON[e] + (sp_.alive ? '' : (sp_.out === 'foul' ? ' (descalificado)' : ' (fuera)')) + '</div>' +
       (top ? cardHTML(top, buyable(e, st.length - 1) ? 'can' : (CARDS[top].cost > V.chi[me] ? 'dim' : ''), 'data-el="' + e + '" data-idx="' + (st.length - 1) + '"') : '<div class="empty">Sin carta</div>') + covered +
       '<div class="deckback ' + (canFlip.includes(e) ? 'can' : '') + '" data-el="' + e + '">Mazo: ' + P.deck[e].length + '</div></div>';
-  }).join('');
-  $('oppRow').innerHTML = EL.map(e => {
+  }).join(''));
+  setHTML($('oppRow'), EL.map(e => {
     const st = V.pl[1 - me].row[e], top = st.length ? CARDS[st[st.length - 1]] : null;
     return '<span class="mini e-' + e + '"' + (top ? ' data-tipcard="' + st[st.length - 1] + '"' : '') + '>' + ICON[e] + ' ' + (top ? top.n + ' (' + top.cost + ')' + (st.length > 1 ? ' +' + (st.length - 1) + ' tapadas' : '') : '—') + '</span>';
-  }).join('');
+  }).join(''));
 
   /* trucos */
   const usable = canAct && pd.kind === 'trickpick' ? pd.options.map(o => o.slot) : [];
-  $('myTricks').innerHTML = P.tricks.map((t, i) => trickHTML(i, t.id, t.gone, usable.includes(i) ? 'can' : '', 'data-slot="' + i + '"', true)).join('');
+  setHTML($('myTricks'), P.tricks.map((t, i) => trickHTML(i, t.id, t.gone, usable.includes(i) ? 'can' : '', 'data-slot="' + i + '"', true)).join(''));
   $('myTricks').querySelectorAll('.tk').forEach(e => e.classList.toggle('static', !e.classList.contains('can')));
-  $('oppTricks').innerHTML = V.pl[1 - me].tricks.map((t, i) => trickHTML(i, t.id, t.gone, '', '', true)).join('');
+  setHTML($('oppTricks'), V.pl[1 - me].tricks.map((t, i) => trickHTML(i, t.id, t.gone, '', '', true)).join(''));
 
   /* registro */
   $('log').innerHTML = V.log.slice(-18).reverse().map(l => l.p < 0 ? '<div>' + esc(l.m) + '</div>' :
@@ -3074,6 +3087,16 @@ const sfx = (n, a) => { try { Snd.play(n, a); } catch (e) {} };
 
 /* ---------- efectos visuales sobre el tablero ---------- */
 const ELCOL = { water: '#3aa0ff', earth: '#5fbf5f', fire: '#ef5a3c' };
+const GLYPH = { water: '💧', fire: '🔥', earth: '🪨' };
+/* las orbes nuevas permanecen ocultas mientras el proyectil viaja y aparecen al llegar a su casilla */
+function orbEls(e) { const c = cells[e.to]; return c ? Array.from(c.orbs.querySelectorAll('.orb[data-o="' + e.p + '"][data-e="' + e.el + '"]')) : []; }
+function hideOrbs(evs) { for (const e of evs || []) if (e.t === 'orb' && e.n !== 0) for (const o of orbEls(e)) o.style.opacity = 0; }
+function revealOrb(e, fly) {
+  for (const o of orbEls(e)) {
+    o.style.opacity = '';
+    try { o.animate([{ opacity: 0, transform: 'scale(.2)' }, { opacity: 1, transform: 'scale(1.5)', offset: 0.6 }, { opacity: 1, transform: 'scale(1)' }], { duration: 300, delay: fly, fill: 'backwards', easing: 'ease-out' }); } catch (err) {}
+  }
+}
 let fxLayer = null, oppTimer = null, toastTimer = null, bigTimer = null, vTimer = null, overlayAfter = 0;
 const cellXY = i => { const c = colOf(i), g = cellGeo(c, laneOf(i)); return { x: (dcol(c) + 0.5) * 100 / 6, y: g.cy }; };
 const TF = (sc, rot, dx, dy) => 'translate(-50%,-50%) translate(' + (dx || 0) + 'cqw,' + (dy || 0) + 'cqw) scale(' + (sc == null ? 1 : sc) + ') rotate(' + (rot || 0) + 'deg)';
@@ -3241,31 +3264,32 @@ function fxEvent(e) {
   if (!V) return;
   switch (e.t) {
     case 'turn':
-      toast(e.p === me ? '¡Tu turno!' : 'Turno de ' + oppN(), e.p === me ? 'mine' : 'opp'); sfx(e.p === me ? 'turn' : 'tick'); break;
+      note(e.p === me ? '¡Tu turno!' : 'Turno de ' + oppN(), 1100); sfx(e.p === me ? 'turn' : 'tick'); break;
     case 'play': { wiggle(e.sid, 'cast'); const c = CARDS[e.cid]; const pos = spPos(e.sid); if (pos >= 0) ring(pos, ELCOL[c.el], 1.8, 520); break; }
     case 'chi': panelFlash(e.p, '#ffd36b'); break;
     case 'orb': {
-      const col = ELCOL[e.el];
-      if (e.from >= 0 && e.from !== e.to) {
+      const col = ELCOL[e.el], fly = (e.from >= 0 && e.from !== e.to) ? 420 : 0;
+      if (fly) {
         const A = cellXY(e.from), B = cellXY(e.to);
-        for (let k = 0; k < 4; k++) {
-          const p = fxEl('proj e-' + e.el + (e.prc ? ' prc' : ''), e.from, '', { '--c': col, opacity: k ? 0.5 - k * 0.1 : 1 });
-          fxAnim(p, [{ left: A.x + '%', top: A.y + '%', transform: TF(0.5, 0), opacity: 1 }, { left: B.x + '%', top: B.y + '%', transform: TF(k ? 0.8 - k * 0.12 : 1.1, e.prc ? 180 : 0), opacity: k ? 0.5 - k * 0.1 : 1 }], { duration: 380, delay: k * 38, easing: 'cubic-bezier(.35,0,.7,.55)' }, k ? null : () => { ring(e.to, col, 2.4, 480); burst(e.to, col, 6, 5, 450); });
+        for (let k = 0; k < 3; k++) {
+          const p = fxEl('emo glyph' + (e.prc ? ' prc' : ''), e.from, GLYPH[e.el], { '--c': col });
+          fxAnim(p, [{ left: A.x + '%', top: A.y + '%', transform: TF(0.5, 0), opacity: k ? 0.45 - k * 0.15 : 1 }, { left: B.x + '%', top: B.y + '%', transform: TF(k ? 0.8 - k * 0.1 : 1.05, e.el === 'earth' ? 360 : 0), opacity: k ? 0.45 - k * 0.15 : 1 }], { duration: fly, delay: k * 45, easing: 'cubic-bezier(.35,0,.7,.55)' }, k ? null : () => { ring(e.to, col, 2.4, 480); burst(e.to, col, 6, 5, 450); });
         }
       } else { ring(e.to, col, 2.2, 500); burst(e.to, col, 6, 5, 450); }
+      revealOrb(e, fly);
       sfx('launch', e.el); if (e.prc) setTimeout(() => sfx('zing'), 60);
-      if (e.none === 'sup') { setTimeout(() => sfx('pop'), 330); }
-      else if (e.from >= 0 && e.from !== e.to) setTimeout(() => sfx('impact', e.el), 330); else sfx('impact', e.el);
-      if (e.none === 'sup' || e.none === 'lim') toast(e.none === 'sup' ? 'Sin orbes de ' + ELN[e.el] + ' en la reserva: el ataque no deja fichas' : 'Solo quedaban ' + e.n + ' orbes de ' + ELN[e.el] + ' en la reserva', 'warn');
+      if (e.none === 'sup') { setTimeout(() => sfx('pop'), 400); }
+      else if (e.from >= 0 && e.from !== e.to) setTimeout(() => sfx('impact', e.el), 400); else sfx('impact', e.el);
+      if (e.none === 'sup' || e.none === 'lim') note(e.none === 'sup' ? 'Sin orbes de ' + ELN[e.el] + ' en la reserva: el ataque no deja fichas' : 'Solo quedaban ' + e.n + ' orbes de ' + ELN[e.el] + ' en la reserva', 1700);
       break;
     }
-    case 'cancel': setTimeout(() => { burst(e.at, '#ffffff', 10, 6, 460); popEmoji(e.at, '✦ −' + e.n, { dur: 1100 }); ring(e.at, '#ffffff', 2.4, 520); sfx('pop'); }, 300); break;
+    case 'cancel': setTimeout(() => { burst(e.at, '#ffffff', 10, 6, 460); popEmoji(e.at, '✦', { dur: 900 }); note('Se anulan ' + e.n + ' orbe' + (e.n > 1 ? 's' : ''), 1000); ring(e.at, '#ffffff', 2.4, 520); sfx('pop'); }, 300); break;
     case 'block': popEmoji(e.at, '🛡️', { dur: 900 }); ring(e.at, '#9fd3ff', 2.6, 600); sfx('blockel', e.el || (e.els && e.els[0]) || 'earth'); break;
     case 'hold': popEmoji(e.at, '🔒', { dur: 800, rot0: -40 }); sfx('lock', e.el || 'earth'); break;
     case 'press': popEmoji(e.at, '💢', { dur: 900 }); ring(e.at, '#ff8a5c', 2.4, 560); sfx('lock', e.el || 'fire'); break;
     case 'sting': popEmoji(e.at, '🐝', { dur: 900 }); panelFlash(1 - e.p, '#ff6b6b'); sfx('pop'); break;
     case 'rally': panelFlash(e.p, '#ffb347'); sfx('chi'); break;
-    case 'blitz': toast(e.p === me ? '¡Embestida!' : 'Embestida de ' + oppN(), e.p === me ? 'mine' : 'opp'); break;
+    case 'blitz': note(e.p === me ? '¡Embestida!' : 'Embestida de ' + oppN(), 1600); break;
     case 'free': popEmoji(e.at, '💨', { dur: 700 }); sfx('free', (sOf(V, e.sid) || {}).el || 'earth'); break;
     case 'move': {
       wiggle(e.sid, 'hop'); sfx('step', (sOf(V, e.sid) || {}).el || 'earth');
@@ -3281,13 +3305,13 @@ function fxEvent(e) {
       wiggle(e.sid, 'hit'); sfx('hitel', (e.els && e.els[0]) || (s && s.el) || 'earth');
       fxAnim(fxEl('glow', e.at, null, { '--c': 'rgba(255,60,60,.95)' }), [{ transform: TF(0.4), opacity: 0.95 }, { transform: TF(1.7), opacity: 0 }], { duration: 560, easing: 'ease-out' });
       ring(e.at, '#ff5d5d', 2.4, 460); burst(e.at, '#ff8a5d', 8 + 2 * e.n, 6 + e.n, 520); burst(e.at, col, 4, 4, 450);
-      floatText(e.at, '−' + e.n, '#ff5d5d');
+      note('Golpe: −' + e.n, 900);
       const c = cells[e.at]; if (c) { try { c.el.animate([{ background: 'rgba(255,60,60,.65)' }, { background: 'rgba(255,60,60,0)' }], { duration: 650 }); } catch (err) {} }
       shakeBoard(3 + 2 * e.n);
       if (e.p === me) { const v = $('vign'); try { v.animate([{ opacity: 0 }, { opacity: 0.6, offset: 0.2 }, { opacity: 0 }], { duration: 650 }); } catch (err) {} }
       break;
     }
-    case 'guard': popEmoji(e.at, '🪨', { dur: 900 }); floatText(e.at, '¡Aguanta!', '#e6d3a3', -8); sfx('guard'); break;
+    case 'guard': popEmoji(e.at, '🪨', { dur: 900 }); note('¡Aguanta!', 800); sfx('guard'); break;
     case 'out': {
       const col = ELCOL[e.el], tc = e.p === 0 ? 'var(--t0)' : 'var(--t1)';
       const g = fxEl('ghost t' + e.p, e.at, ICON[e.el]);
@@ -3295,21 +3319,21 @@ function fxEvent(e) {
       burst(e.at, col, 18, 11, 800); burst(e.at, '#ffffff', 10, 8, 600); ring(e.at, '#ffffff', 3.4, 700); popEmoji(e.at, '💥', { dur: 700 });
       shakeBoard(10);
       const who = NAMES[e.p][e.el];
-      bigMsg(e.why === 'foul' ? '🟨 ¡' + who + ' descalificado!' : '¡' + who + ' fuera de la cancha!', e.p === me ? 'Pierdes un espíritu' : 'Un espíritu rival menos', tc, 3150);
+      note((e.why === 'foul' ? '🟨 ¡' + who + ' descalificado!' : '¡' + who + ' fuera de la cancha!') + ' ' + (e.p === me ? 'Pierdes un espíritu' : 'Un espíritu rival menos'), 3100);
       if (e.why === 'foul') sfx('foul'); else sfx('ko', e.el); break;
     }
-    case 'fan': { const pos = spPos(e.sid); if (pos >= 0) { popEmoji(pos, '🟨', { dur: 1000 }); floatText(pos, e.n >= 2 ? 'Falta 2' : 'Falta', '#ffe066'); } sfx('foul'); break; }
+    case 'fan': { const pos = spPos(e.sid); if (pos >= 0) { popEmoji(pos, '🟨', { dur: 1000 }); note(e.n >= 2 ? 'Falta 2: descalificado' : 'Falta', 900); } sfx('foul'); break; }
     case 'ref': showDice(e); break;
     case 'toss': showCoin(e); break;
     case 'daze': { const pos = spPos(e.sid); if (pos >= 0) popEmoji(pos, '💫', { dur: 1000, rot0: -90, rot1: 90 }); sfx('daze'); break; }
     case 'advance': {
-      bigMsg('¡' + TEAM[e.p] + ' avanzan de línea!', e.p === me ? 'Tomas el Impulso' : 'El rival toma el Impulso', e.p === 0 ? 'var(--t0)' : 'var(--t1)', 2850); sfx('advance');
+      note('¡' + TEAM[e.p] + ' avanzan de línea! ' + (e.p === me ? 'Tomas el Impulso' : 'El rival toma el Impulso'), 2800); sfx('advance');
       const sw = document.createElement('div'); sw.className = 'fx sweep'; fxLayer.appendChild(sw);
       fxAnim(sw, [{ left: e.p === me ? '-10%' : '110%', opacity: 0.9 }, { left: e.p === me ? '110%' : '-10%', opacity: 0 }], { duration: 900, easing: 'ease-in-out' }); break;
     }
     case 'trick': {
       const pos = spPos(e.sid); if (pos >= 0) { ring(pos, '#ffd36b', 2.6, 700); burst(pos, '#ffd36b', 10, 6, 700); popEmoji(pos, '✨', { dur: 900 }); }
-      if (e.p === me) toast('Truco: ' + TR[e.tid].n, 'mine');
+      if (e.p === me) note('Truco: ' + TR[e.tid].n, 1600);
       break;
     }
     case 'buy': if (e.p === me) sfx('coin'); break;
@@ -3323,7 +3347,7 @@ function applyView(view, evs) {
   waiting = false; V = view; if (!(V.pending && V.pending.kind === 'gain' && V.pending.p === me)) $('cfModal').hidden = true; if (V.tm) setTeams(V.tm); showSection('game');
   if (window.__onApply) window.__onApply(view, evs, evSpan(evs));
   if (view.over && evs.some(e => e.t === 'out')) { if (!window.__noFxDelay) { overlayAfter = Date.now() + 3450; clearTimeout(vTimer); vTimer = setTimeout(render, 3525); } }
-  render(); playEvents(evs);
+  render(); hideOrbs(evs); playEvents(evs);
 }
 function deliver(view, evs) {
   evs = evs || [];
