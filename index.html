@@ -348,6 +348,15 @@
   .tk.gone{opacity:.4; text-decoration:line-through}
   .tk.static{cursor:default}
   .tk.compact{min-height:0; padding-bottom:5px} .tk.compact b{padding-right:22px}
+  .handrow{display:flex; gap:10px; width:100%; align-items:flex-start}
+  .handrow .cards{flex:1; min-width:0}
+  .tcol{width:124px; flex:none; display:flex; flex-direction:column; gap:4px}
+  .tlbl{font-size:12px; color:var(--muted)}
+  #myTricks{display:flex; flex-direction:column; gap:5px}
+  #myTricks .tk{padding:4px 6px 5px; font-size:11px} #myTricks .tk b{font-size:12px}
+  .tk.compact:hover, .mini[data-tipcard]:hover{filter:brightness(1.08)}
+  #tip.cardtip{padding:6px; max-width:none} #tip.cardtip .card{margin:0}
+  @media (max-width:520px){ .handrow{flex-direction:column} .tcol{width:100%} #myTricks{display:grid; grid-template-columns:repeat(3,1fr)} }
   #tip{position:fixed; z-index:90; max-width:270px; background:#16263a; color:#f1f1f1; border:2px solid var(--accent); border-radius:10px; padding:8px 11px; font-size:13px; line-height:1.35; box-shadow:0 6px 22px #000c; pointer-events:none}
   #tip[hidden]{display:none}
   .setupbar{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; position:sticky; bottom:0; background:linear-gradient(transparent,var(--bg) 40%); padding:14px 0 6px}
@@ -469,7 +478,10 @@
           <div class="symlist" id="symList"></div>
         </details>
         <div class="secttl">Tu mano <span id="playedInfo"></span></div>
-        <div class="cards" id="hand"></div>
+        <div class="handrow">
+          <div class="cards" id="hand"></div>
+          <div class="tcol"><div class="tlbl">Trucos</div><div class="tslots" id="myTricks"></div></div>
+        </div>
         <div id="modePanel" hidden>
           <button id="btnAct">Usar como Acción</button>
           <button id="btnChi" class="secondary">Usar como Energía (+1)</button>
@@ -478,8 +490,6 @@
 
         <div class="secttl">Tu tienda</div>
         <div class="slots" id="row"></div>
-        <div class="secttl">Tus trucos</div>
-        <div class="tslots" id="myTricks"></div>
         <div class="secttl">Tienda del rival</div>
         <div class="minirow" id="oppRow"></div>
         <div class="secttl">Trucos del rival (visibles)</div>
@@ -2917,14 +2927,14 @@ function render() {
   }).join('');
   $('oppRow').innerHTML = EL.map(e => {
     const st = V.pl[1 - me].row[e], top = st.length ? CARDS[st[st.length - 1]] : null;
-    return '<span class="mini e-' + e + '">' + ICON[e] + ' ' + (top ? top.n + ' (' + top.cost + ')' + (st.length > 1 ? ' +' + (st.length - 1) + ' tapadas' : '') : '—') + '</span>';
+    return '<span class="mini e-' + e + '"' + (top ? ' data-tipcard="' + st[st.length - 1] + '"' : '') + '>' + ICON[e] + ' ' + (top ? top.n + ' (' + top.cost + ')' + (st.length > 1 ? ' +' + (st.length - 1) + ' tapadas' : '') : '—') + '</span>';
   }).join('');
 
   /* trucos */
   const usable = canAct && pd.kind === 'trickpick' ? pd.options.map(o => o.slot) : [];
   $('myTricks').innerHTML = P.tricks.map((t, i) => trickHTML(i, t.id, t.gone, usable.includes(i) ? 'can' : '', 'data-slot="' + i + '"', true)).join('');
   $('myTricks').querySelectorAll('.tk').forEach(e => e.classList.toggle('static', !e.classList.contains('can')));
-  $('oppTricks').innerHTML = V.pl[1 - me].tricks.map((t, i) => trickHTML(i, t.id, t.gone, '', '')).join('');
+  $('oppTricks').innerHTML = V.pl[1 - me].tricks.map((t, i) => trickHTML(i, t.id, t.gone, '', '', true)).join('');
 
   /* registro */
   $('log').innerHTML = V.log.slice(-18).reverse().map(l => l.p < 0 ? '<div>' + esc(l.m) + '</div>' :
@@ -3373,15 +3383,16 @@ $('modePick').addEventListener('click', e => { const b = e.target.closest('butto
 (() => {
   const tip = $('tip'); let lp = null, hideT = null, suppress = false;
   const show = el => {
-    tip.textContent = el.dataset.tip; tip.hidden = false;
+    if (el.dataset.tipcard) { tip.innerHTML = cardHTML(el.dataset.tipcard, ''); tip.classList.add('cardtip'); } else { tip.textContent = el.dataset.tip; tip.classList.remove('cardtip'); }
+    tip.hidden = false;
     const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2)) + 'px';
     tip.style.top = (r.top - h - 8 >= 6 ? r.top - h - 8 : r.bottom + 8) + 'px';
   };
   const hide = () => { tip.hidden = true; clearTimeout(lp); clearTimeout(hideT); };
-  document.addEventListener('mouseover', e => { const t = e.target.closest && e.target.closest('.tk[data-tip]'); if (t) show(t); else if (!tip.hidden) hide(); });
+  document.addEventListener('mouseover', e => { const t = e.target.closest && e.target.closest('.tk[data-tip], .mini[data-tipcard]'); if (t) show(t); else if (!tip.hidden) hide(); });
   document.addEventListener('touchstart', e => {
-    const t = e.target.closest && e.target.closest('.tk[data-tip]');
+    const t = e.target.closest && e.target.closest('.tk[data-tip], .mini[data-tipcard]');
     if (!t) { hide(); return; }
     clearTimeout(lp); lp = setTimeout(() => { suppress = true; show(t); clearTimeout(hideT); hideT = setTimeout(hide, 3500); }, 450);
   }, { passive: true });
