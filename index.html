@@ -2214,17 +2214,34 @@ function joinRoom(raw) {
   vsAI = false; isHost = false; me = 1; roomCode = code; V = null; G = null; inSetup = false;
   setBusy(true); lobbyMsg('Conectando con la sala ' + code + '…', true);
   peer = new Peer(PEER_CFG);
-  peer.on('open', () => {
-    conn = peer.connect(ID_PREFIX + code, { reliable: true });
-    setupConn(conn);
-    joinTimer = setTimeout(() => {
-      if (!V && !inSetup) {
-        let st = ''; try { st = conn && conn.peerConnection ? ' (estado: ' + conn.peerConnection.iceConnectionState + ')' : ''; } catch (e) {}
-        fatal('No se pudo establecer la conexión' + st + '. A veces pasa con ciertas redes (por ejemplo, datos móviles o redes de oficina). Prueba con otra red o intenta de nuevo.');
-      }
-    }, 30000);
-  });
+  peer.on('open', () => tryJoin(1));
   peer.on('error', onNetError);
+}
+/* El invitado reintenta hasta 3 veces y, si falla, informa qué tipos de ruta encontró (host/srflx/relay) */
+function tryJoin(n) {
+  if (!peer || isHost || V || inSetup) return;
+  clearTimeout(joinTimer);
+  const cand = {};
+  const c = peer.connect(ID_PREFIX + roomCode, { reliable: true });
+  conn = c; setupConn(c);
+  try { c.peerConnection.addEventListener('icecandidate', ev => { if (ev.candidate) { const m = /typ (\w+)/.exec(ev.candidate.candidate || ''); const t = ev.candidate.type || (m ? m[1] : '?'); cand[t] = (cand[t] || 0) + 1; } }); } catch (e) {}
+  const giveUp = () => {
+    let st = '?', sig = peer && !peer.disconnected ? 'ok' : 'caída';
+    try { st = c.peerConnection.iceConnectionState; } catch (e) {}
+    const cs = Object.keys(cand).map(k => k + ' ' + cand[k]).join(', ') || 'ninguna';
+    fatal('No se pudo establecer la conexión tras ' + n + ' intentos (estado: ' + st + '; rutas: ' + cs + '; señal: ' + sig + '). A veces pasa con ciertas redes (por ejemplo, datos móviles o redes de oficina). Prueba con otra red o intenta de nuevo.');
+  };
+  const next = () => {
+    c._retry = null;
+    if (conn !== c || V || inSetup) return;
+    clearTimeout(joinTimer);
+    if (n >= 3) return giveUp();
+    try { c.close(); } catch (e) {}
+    conn = null; lobbyMsg('Reintentando la conexión (' + (n + 1) + ' de 3)…', true);
+    joinTimer = setTimeout(() => tryJoin(n + 1), 600);
+  };
+  c._retry = next;
+  joinTimer = setTimeout(next, 20000);
 }
 function onIncoming(c) {
   if (conn && conn.open) {
@@ -2245,6 +2262,7 @@ function setupConn(c) {
   c.on('data', onData);
   c.on('close', () => {
     if (conn !== c) return;
+    if (!isHost && !c.open && !V && !inSetup && c._retry) { const r = c._retry; c._retry = null; r(); return; }
     conn = null;
     if (V || inSetup) {
       banner(isHost ? 'Tu amigo se desconectó. Si vuelve a abrir el enlace, retomarán la partida.'
