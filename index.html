@@ -360,9 +360,10 @@
   .tk.gone{opacity:.4; text-decoration:line-through}
   .tk.static{cursor:default}
   .tk.compact{min-height:0; padding-bottom:5px} .tk.compact b{padding-right:22px}
-  .handrow{display:flex; gap:10px; width:100%; align-items:flex-start}
-  .handrow .cards{flex:1; min-width:0}
-  .tcol{width:124px; flex:none; display:flex; flex-direction:column; gap:4px}
+  .handrow{display:grid; grid-template-columns:minmax(0,1fr) 124px; grid-template-areas:"hand tcol" "mode tcol"; gap:8px 10px; width:100%; align-items:start}
+  .handrow .cards{grid-area:hand; min-width:0}
+  .tcol{grid-area:tcol; display:flex; flex-direction:column; gap:4px}
+  .handrow #modePanel{grid-area:mode}
   .tlbl{font-size:12px; color:var(--muted)}
   /* títulos de tus propias zonas (mano, tienda, trucos): grandes, dorados y con otra tipografía para que se noten */
   .hdr{font-family:"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; font-size:21px; font-weight:800; letter-spacing:.4px; color:#ffd36b; border-left:5px solid #ffd36b; padding-left:9px; line-height:1.1; margin:6px 0 0; text-shadow:0 1px 0 #0008}
@@ -372,7 +373,7 @@
   #myTricks .tk{padding:4px 6px 5px; font-size:11px} #myTricks .tk b{font-size:12px}
   .tk.compact:hover, .mini[data-tipcard]:hover{filter:brightness(1.08)}
   #tip.cardtip{padding:6px; max-width:none} #tip.cardtip .card{margin:0}
-  @media (max-width:520px){ .handrow{flex-direction:column} .tcol{width:100%} #myTricks{display:grid; grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:520px){ .handrow{grid-template-columns:minmax(0,1fr); grid-template-areas:"hand" "mode" "tcol"} .tcol{width:100%} #myTricks{display:grid; grid-template-columns:repeat(3,1fr)} }
   #tip{position:fixed; z-index:90; max-width:270px; background:#16263a; color:#f1f1f1; border:2px solid var(--accent); border-radius:10px; padding:8px 11px; font-size:13px; line-height:1.35; box-shadow:0 6px 22px #000c; pointer-events:none}
   #tip[hidden]{display:none}
   .setupbar{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; position:sticky; bottom:0; background:linear-gradient(transparent,var(--bg) 40%); padding:14px 0 6px}
@@ -498,11 +499,11 @@
         <div class="handrow">
           <div class="cards" id="hand"></div>
           <div class="tcol"><div class="tlbl hdr">Trucos</div><div class="tslots" id="myTricks"></div></div>
-        </div>
-        <div id="modePanel" hidden>
+          <div id="modePanel" hidden>
           <button id="btnAct">Usar como Acción</button>
           <button id="btnChi" class="secondary">Usar como Energía (+1)</button>
           <button id="btnCancel" class="secondary">Cancelar</button>
+        </div>
         </div>
 
         <div class="secttl hdr">Tienda</div>
