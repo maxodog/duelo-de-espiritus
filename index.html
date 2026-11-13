@@ -2204,7 +2204,8 @@ let vq = [], vBusy = false, vTimerQ = null;
 let inSetup = false, myCfg = defaultCfg(0), cfgMine = null, cfgOther = null, readyMine = false, readyTheirs = false, tFilter = 'all';
 
 /* ---------- utilidades ---------- */
-function showSection(id) { document.body.classList.toggle('ingame', id === 'game'); for (const s of ['lobby', 'waiting', 'setup', 'game']) $(s).hidden = (s !== id); $('sub').hidden = (id === 'game' || id === 'setup'); $('hero').hidden = (id === 'game' || id === 'setup'); }
+let lastSection = '';
+function showSection(id) { if (id !== lastSection) { lastSection = id; try { window.scrollTo(0, 0); } catch (e) {} } document.body.classList.toggle('ingame', id === 'game'); for (const s of ['lobby', 'waiting', 'setup', 'game']) $(s).hidden = (s !== id); $('sub').hidden = (id === 'game' || id === 'setup'); $('hero').hidden = (id === 'game' || id === 'setup'); }
 function lobbyMsg(t, ok) { const m = $('lobbyMsg'); m.textContent = t || ''; m.classList.toggle('ok', !!ok); }
 function setBusy(b) { $('btnCreate').disabled = b; $('btnJoin').disabled = b; $('codeInput').disabled = b; }
 function banner(t) { const b = $('banner'); b.hidden = !t; b.textContent = t || ''; }
