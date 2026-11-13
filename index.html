@@ -243,6 +243,8 @@
   .orb.prc{border-radius:0; box-shadow:none; background:var(--ring); width:3cqw; height:3cqw; position:relative; clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
   .orb.prc::after{content:""; position:absolute; inset:.5cqw; background:var(--el); clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
   /* elección de equipo */
+  .supply .sm{display:none} .boardcol #prompt{margin:8px 0 4px}
+  @media (max-width:999px){ .supply .lg{display:none} .supply .sm{display:inline} .boardcol .supply{margin:4px 2px 10px} }
   .supply{display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 2px 2px; font-size:14px; color:var(--muted)}
   .supply .sc{display:inline-flex; align-items:center; gap:6px; background:#1d2d40; border:2px solid transparent; border-radius:99px; padding:3px 11px; color:var(--ink); font-weight:800}
   .supply .sc.e-water{border-color:#3aa0ff77} .supply .sc.e-earth{border-color:#5fbf5f77} .supply .sc.e-fire{border-color:#ef5a3c77}
@@ -2204,6 +2206,16 @@ let vq = [], vBusy = false, vTimerQ = null;
 let inSetup = false, myCfg = defaultCfg(0), cfgMine = null, cfgOther = null, readyMine = false, readyTheirs = false, tFilter = 'all';
 
 /* ---------- utilidades ---------- */
+/* móvil: orbes disponibles arriba del tablero y cuadro de mensajes debajo; escritorio: cuadro arriba y orbes abajo */
+const mqDesk = window.matchMedia('(min-width:1000px)');
+function placeBlocks() {
+  const bw = document.querySelector('.boardwrap'), hg = document.querySelector('.hgrid'), pr = $('prompt'), sp = $('supply');
+  if (!bw || !hg || !pr || !sp) return;
+  if (mqDesk.matches) { if (pr.parentNode !== hg) hg.appendChild(pr); if (sp.previousElementSibling !== bw) bw.after(sp); }
+  else { if (sp.nextElementSibling !== bw) bw.before(sp); if (pr.previousElementSibling !== bw) bw.after(pr); }
+}
+mqDesk.addEventListener ? mqDesk.addEventListener('change', placeBlocks) : mqDesk.addListener(placeBlocks);
+placeBlocks();
 let lastSection = '', userScrolled = false;
 ['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(t => window.addEventListener(t, () => { userScrolled = true; }, { passive: true, capture: true }));
 function resetScroll() { if (userScrolled) return; try { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch (e) {} }
@@ -2965,7 +2977,7 @@ function render() {
   }).join(''));
 
   /* reserva de orbes: 10 por elemento, compartidas; las del tablero no están disponibles */
-  setHTML($('supply'), '<span>Orbes disponibles</span>' + EL.map((e, k) => {
+  setHTML($('supply'), '<span><span class="lg">Orbes disponibles</span><span class="sm">Orb disp.</span></span>' + EL.map((e, k) => {
     let on = 0; for (let i = 0; i < V.tok.length; i++) on += V.tok[i][0][k] + V.tok[i][1][k];
     const left = Math.max(0, 10 - on);
     return '<span class="sc e-' + e + (left === 0 ? ' zero' : left <= 2 ? ' low' : '') + '" data-tip="' + esc('Reserva compartida de ' + ELN[e] + ': ' + left + ' de 10 sin usar (' + on + ' en el tablero). Si un ataque necesita más orbes de las que quedan, solo se colocan las disponibles.') + '">' + ICON[e] + ' ' + left + '/10</span>';
