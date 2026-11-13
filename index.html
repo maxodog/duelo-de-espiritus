@@ -243,6 +243,10 @@
   .orb.prc{border-radius:0; box-shadow:none; background:var(--ring); width:3cqw; height:3cqw; position:relative; clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
   .orb.prc::after{content:""; position:absolute; inset:.5cqw; background:var(--el); clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
   /* elección de equipo */
+  .supply{display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 2px 2px; font-size:14px; color:var(--muted)}
+  .supply .sc{display:inline-flex; align-items:center; gap:6px; background:#1d2d40; border:2px solid transparent; border-radius:99px; padding:3px 11px; color:var(--ink); font-weight:800}
+  .supply .sc.e-water{border-color:#3aa0ff77} .supply .sc.e-earth{border-color:#5fbf5f77} .supply .sc.e-fire{border-color:#ef5a3c77}
+  .supply .sc.low{color:#ffd36b} .supply .sc.zero{color:#ff8a8a; background:#3a2226}
   .teampick{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:6px 0 4px}
   .teampick span{color:var(--muted); font-size:14px}
   .teampick button{background:#1d2d40; color:var(--ink); border:2px solid transparent}
@@ -480,6 +484,7 @@
           <div class="board" id="board"></div>
           <div id="oppCard" hidden></div><div id="bigMsg" hidden></div><div id="toast" hidden></div><div id="dice" hidden></div>
         </div>
+        <div class="supply" id="supply"></div>
         <div class="legend"><span id="modeLeg"></span></div>
       </div>
 
@@ -521,6 +526,7 @@
         <li><b>Tablero:</b> es rectangular y tiene 6 zonas numeradas del 1 al 6 (de un extremo al otro). Cada equipo parte con 3: la del fondo (3 casillas), la del medio (4) y la del frente junto a la línea media (5). El color de cada zona muestra quién la controla: si un equipo avanza y ocupa una zona del rival, esa zona toma su color. Dos casillas son <i>adyacentes</i> si se tocan por un borde o una esquina (también en diagonal a través de la línea media). El alcance de un ataque se cuenta en casillas adyacentes. Al empezar, tus espíritus están en las 3 casillas centrales de tu Zona A.</li>
         <li><b>Tu turno:</b> 1) ganas 1 Energía (máx. 8); 2) juegas una a una las 3 cartas de tu mano, cada una como <b>Energía</b> (+1) o como <b>Acción</b> del espíritu que nombra; 3) se revisan los golpes; 4) tienda, mazos y mano nueva.</li>
         <li><b>Acciones</b> (de arriba abajo, deben usarse todas si es posible): <b>Mover</b> 1 casilla dentro de tu zona (si hay una <b>Traba</b> en tu casilla, el Mover la quita en vez de moverte); <b>Bloquear n</b> quita n orbes rivales de tu casilla; <b>Ataque</b> pone orbes de tu espíritu en una casilla a su alcance (no la tuya ni una donde ya tengas orbes de ese elemento) y se anulan 1 a 1 con los orbes rivales; <b>Perforante</b> no anula orbes rivales.</li>
+        <li><b>Reserva de orbes:</b> hay 10 orbes de cada elemento, compartidas por los dos jugadores. Las que están en el tablero no están disponibles; vuelven a la reserva cuando se anulan, bloquean o se retiran. Si un ataque debería dejar más orbes de las que quedan, solo se colocan las disponibles. El contador bajo el tablero muestra cuántas quedan de cada elemento.</li>
         <li><b>Modificadores</b> (solo tras un ataque donde controlas fichas): <b>Traba ◆</b> en la casilla objetivo (los espíritus de esa casilla no pueden moverse hasta gastar un Mover). <b>Seguimiento</b>: pone más orbes en 1 ó 2 casillas adyacentes a la objetivo (siempre como ataque normal). <b>Reflejo</b> (técnicas de firma): voltea a tu lado los orbes rivales de tu elemento de una casilla y puedes moverlos a una adyacente. <b>Aturdir</b>: el espíritu aturdido ignora el primer ícono de su próxima carta.</li>
         <li><b>Abanico amarillo 🟨</b>: al terminar una carta o truco con ese ícono, el dado del árbitro puede darte una falta. Con 2 faltas el espíritu queda descalificado (sin dar Energía ni Impulso al rival).</li>
         <li><b>Golpes:</b> tras jugar tus cartas, cada orbe rival en la casilla de uno de tus espíritus es un golpe: retrocede 1 zona por golpe y tú eliges la casilla. Si sale por la última zona, queda fuera (+3 Energía para ti y el rival toma el Impulso). Después se retiran todos los orbes y Trabas rivales.</li>
@@ -2578,7 +2584,7 @@ function renderSetup() {
       return '<div class="dkrow' + (c.kind === 'sig' ? ' sig' : '') + '"><div class="info"><b>' + c.n + (c.vet ? ' <span class="vet" title="Veterano">◈</span>' : '') + '</b> · coste ' + c.cost + (c.kind === 'sig' ? ' · firma' : '') + syRow(c) + '</div>' +
         '<div class="cnt"><button data-d="' + cid + '" data-k="-1"' + (locked || cnt === 0 ? ' disabled' : '') + '>−</button><output>' + cnt + '</output><button data-d="' + cid + '" data-k="1"' + (locked || cnt >= max || n >= 4 ? ' disabled' : '') + '>+</button></div></div>';
     }).join('');
-    return '<div class="dk e-' + e + '"><h4>' + ICON[e] + ' ' + ELN[e] + ' <span class="' + (n === 4 ? 'full' : '') + '">' + n + '/4</span></h4>' + rows + '</div>';
+    return '<div class="dk e-' + e + '"><h4>' + ICON[e] + ' <span class="' + (n === 4 ? 'full' : '') + '">' + n + '/4</span></h4>' + rows + '</div>';
   }).join('');
   const tot = EL.reduce((a, e) => a + deckTotal(e), 0);
   $('deckCount').textContent = tot + '/12 cartas';
@@ -2600,9 +2606,9 @@ function renderPos(locked) {
   const at = l => EL.find(e => pos[e] === l);
   $('posStrip').innerHTML = [0, 1, 2, 3, 4].map(l => {
     const e = at(l);
-    return '<button class="posrow' + (e ? ' full' : '') + (e && selPos === e ? ' sel' : '') + '" data-l="' + l + '"' + (locked ? ' disabled' : '') + '><span class="pn">' + (l + 1) + '</span>' + (e ? '<span class="pi">' + ICON[e] + '</span><b>' + esc(ELN[e]) + '</b>' : 'vacía') + '</button>';
+    return '<button class="posrow' + (e ? ' full' : '') + (e && selPos === e ? ' sel' : '') + '" data-l="' + l + '"' + (locked ? ' disabled' : '') + '><span class="pn">' + (l + 1) + '</span>' + (e ? '<span class="pi">' + ICON[e] + '</span>' : 'vacía') + '</button>';
   }).join('');
-  $('posInfo').innerHTML = (locked ? '' : (selPos ? '<b>' + ICON[selPos] + ' ' + esc(ELN[selPos]) + '</b> seleccionado: toca la fila donde quieres que parta (si hay otro espíritu, intercambian lugar).' : 'Toca un espíritu y luego la fila donde quieres que parta. Si eliges la fila de otro espíritu, intercambian lugar.')) +
+  $('posInfo').innerHTML = (locked ? '' : (selPos ? '<b>' + ICON[selPos] + '</b> seleccionado: toca la fila donde quieres que parta (si hay otro espíritu, intercambian lugar).' : 'Toca un espíritu y luego la fila donde quieres que parta. Si eliges la fila de otro espíritu, intercambian lugar.')) +
     '<br><span class="hint">Estas son las 5 casillas de tu zona inicial (la más cercana a la línea media), de arriba hacia abajo. Tu rival elige las suyas en secreto; se revelan al empezar.</span>';
 }
 function maybeStart() {
@@ -2955,6 +2961,13 @@ function render() {
     return '<span class="mini e-' + e + '"' + (top ? ' data-tipcard="' + st[st.length - 1] + '"' : '') + '>' + ICON[e] + ' ' + (top ? top.n + ' (' + top.cost + ')' + (st.length > 1 ? ' +' + (st.length - 1) + ' tapadas' : '') : '—') + '</span>';
   }).join(''));
 
+  /* reserva de orbes: 10 por elemento, compartidas; las del tablero no están disponibles */
+  setHTML($('supply'), '<span>Orbes disponibles</span>' + EL.map((e, k) => {
+    let on = 0; for (let i = 0; i < V.tok.length; i++) on += V.tok[i][0][k] + V.tok[i][1][k];
+    const left = Math.max(0, 10 - on);
+    return '<span class="sc e-' + e + (left === 0 ? ' zero' : left <= 2 ? ' low' : '') + '" data-tip="' + esc('Reserva compartida de ' + ELN[e] + ': ' + left + ' de 10 sin usar (' + on + ' en el tablero). Si un ataque necesita más orbes de las que quedan, solo se colocan las disponibles.') + '">' + ICON[e] + ' ' + left + '/10</span>';
+  }).join(''));
+
   /* trucos */
   const usable = canAct && pd.kind === 'trickpick' ? pd.options.map(o => o.slot) : [];
   setHTML($('myTricks'), P.tricks.map((t, i) => trickHTML(i, t.id, t.gone, usable.includes(i) ? 'can' : '', 'data-slot="' + i + '"', true)).join(''));
@@ -3286,7 +3299,7 @@ function fxEvent(e) {
       sfx('launch', e.el); if (e.prc) setTimeout(() => sfx('zing'), 60);
       if (e.none === 'sup') { setTimeout(() => sfx('pop'), 400); }
       else if (e.from >= 0 && e.from !== e.to) setTimeout(() => sfx('impact', e.el), 400); else sfx('impact', e.el);
-      if (e.none === 'sup' || e.none === 'lim') note(e.none === 'sup' ? 'Sin orbes de ' + ELN[e.el] + ' en la reserva: el ataque no deja fichas' : 'Solo quedaban ' + e.n + ' orbes de ' + ELN[e.el] + ' en la reserva', 1700);
+      if (e.none === 'sup' || e.none === 'lim') note(e.none === 'sup' ? 'Sin orbes de ' + ICON[e.el] + ' en la reserva: el ataque no deja fichas' : 'Solo quedaban ' + e.n + ' orbes de ' + ICON[e.el] + ' en la reserva', 1700);
       break;
     }
     case 'cancel': setTimeout(() => { burst(e.at, '#ffffff', 10, 6, 460); popEmoji(e.at, '✦', { dur: 900 }); note('Se anulan ' + e.n + ' orbe' + (e.n > 1 ? 's' : ''), 1000); ring(e.at, '#ffffff', 2.4, 520); sfx('pop'); }, 300); break;
