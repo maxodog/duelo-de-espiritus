@@ -2708,9 +2708,9 @@ function flash(t, dur) { const p = $('promptText'); p.dataset.flash = t; clearTi
 const TXT = 2.5;
 let noteQ = [], noteBusy = false;
 function nextNote() { const n = noteQ.shift(); if (!n) { noteBusy = false; return; } noteBusy = true; flash(n.txt, n.d); setTimeout(nextNote, n.d); }
-function note(txt, dur) {
+function note(txt, dur, noScale) {
   if (!V) return;
-  const slow = !!(V.pending && V.pending.p !== me) && !window.__noFxDelay, d = Math.min((dur || 1600) * (slow ? TXT : 1), 4500);
+  const slow = !noScale && !!(V.pending && V.pending.p !== me) && !window.__noFxDelay, d = Math.min((dur || 1600) * (slow ? TXT : 1), 4500);
   if (!slow) { flash(txt, d); return; }
   noteQ.push({ txt, d }); while (noteQ.length > 3) noteQ.shift();
   if (!noteBusy) nextNote();
@@ -3256,21 +3256,33 @@ function showCoin(e) {
 /* carta que usó el rival (se muestra antes de aplicar sus movimientos) */
 let oppShow = null;
 function showOppCard(e) {
+  noteQ.length = 0; clearTimeout(flashTimer); delete $('promptText').dataset.flash;
   const who = vsAI ? 'La máquina' : 'Tu amigo';
   if (e.t === 'play') oppShow = { lab: who + ' juega:', body: stepsBar({ cid: e.cid, i: -1 }) };
   else if (e.t === 'trick') oppShow = { lab: who + ' usa un truco', body: '<div class="pcard e-' + TR[e.tid].el + '"><span class="pn">Truco: ' + esc(TR[e.tid].n) + '</span></div>' };
   else oppShow = { lab: who + ' usó una carta: +1 Energía', body: '' };
   render();
+  const mine = oppShow; setTimeout(() => { if (oppShow === mine) { oppShow = null; render(); } }, window.__noFxDelay ? 0 : 1000);
 }
 /* devuelve cuánto esperar antes de mostrar el nuevo estado del tablero */
+/* acciones de una carta rival: antes de cada una se esperan 3 s para poder seguirla */
+const ACT_WAIT = 3000;
+function actorOf(e) { if (e.p !== undefined && e.p !== null) return e.p; const s = e.sid !== undefined && V ? sOf(V, e.sid) : null; return s ? s.p : -1; }
+function isStarter(e) { return ['move', 'free', 'block', 'orb', 'hold', 'press', 'sting', 'rally', 'daze', 'blitz'].includes(e.t) && !(e.t === 'move' && (e.knock || e.place)); }
+function oppStarter(e) { return isStarter(e) && actorOf(e) !== me && actorOf(e) >= 0; }
+function evTimes(evs) {
+  let t = 0, seen = false, end = 0; const at = [];
+  for (const e of evs || []) { if (oppStarter(e) && !window.__noFxDelay) { if (seen) t += ACT_WAIT; seen = true; } at.push(t); end = Math.max(end, t + evDur(e)); t += evGap(e); }
+  return { at, end };
+}
 function prelude(evs) {
   const f = window.__noFxDelay ? 0 : 1;
   const pl = evs.find(e => e.t === 'play' && e.p !== me);
-  if (pl) { showOppCard(pl); return 1575 * TXT * f; }
+  if (pl) { showOppCard(pl); return 1000 * f; }
   const tr = evs.find(e => e.t === 'trick' && e.p !== me);
-  if (tr) { showOppCard(tr); return 1425 * TXT * f; }
+  if (tr) { showOppCard(tr); return 1000 * f; }
   const ch = evs.find(e => e.t === 'chi' && e.p !== me);
-  if (ch) { showOppCard(ch); return 975 * TXT * f; }
+  if (ch) { showOppCard(ch); return 1000 * f; }
   return 0;
 }
 
@@ -3291,25 +3303,36 @@ function evDur(e) {
   return DUR[e.t] || 0;
 }
 /* tiempo total que ocupa la presentación de un grupo de eventos */
-function evSpan(evs) {
-  let t = 0, end = 0;
-  for (const e of evs || []) { end = Math.max(end, t + evDur(e)); t += evGap(e); }
-  return end;
-}
+function evSpan(evs) { return evTimes(evs).end; }
 function playEvents(evs) {
   if (!evs || !evs.length || !fxLayer) return;
-  let t = 0;
-  for (const e of evs) {
+  const T = evTimes(evs).at;
+  evs.forEach((e, k) => {
     const run = () => { try { fxEvent(e); } catch (err) { if (window.__dbg) console.error(err); } };
-    if (t > 0) setTimeout(run, t); else run();
-    t += evGap(e);
+    if (T[k] > 0) setTimeout(run, T[k]); else run();
+  });
+}
+function actNote(e) {
+  if (!oppStarter(e)) return;
+  const el = e.el || ((sOf(V, e.sid) || {}).el), ic = el ? ICON[el] + ' ' : '', n = e.n || 0, pl = (k, w) => k + ' ' + w + (k === 1 ? '' : 's');
+  switch (e.t) {
+    case 'move': note(ic + 'se mueve a ' + spaceName(e.to), 1400); break;
+    case 'free': note(ic + 'se libera de una Traba', 1400); break;
+    case 'orb': if (e.none !== 'sup') note(ic + (e.prc ? 'ataque perforante' : 'ataque') + ' en ' + spaceName(e.to) + ': deja ' + pl(n, 'orbe') + (e.ann ? ', anula ' + e.ann : ''), 1500); break;
+    case 'block': note(ic + 'bloquea: elimina ' + pl(n, 'orbe') + ' rival' + (n === 1 ? '' : 'es'), 1400); break;
+    case 'hold': note('Pone una Traba en ' + spaceName(e.at), 1400); break;
+    case 'press': note('Pone Presión en ' + spaceName(e.at), 1400); break;
+    case 'sting': note('Aguijón: ' + (e.p === me ? 'pierdes' : 'el rival pierde') + ' Energía', 1400); break;
+    case 'rally': note('Gana Ímpetu (' + e.n + '/4)', 1400); break;
+    case 'daze': note('Aturde a un espíritu', 1400); break;
   }
 }
 function fxEvent(e) {
+  try { actNote(e); } catch (err) {}
   if (!V) return;
   switch (e.t) {
     case 'turn':
-      note(e.p === me ? '¡Tu turno!' : 'Turno de ' + oppN(), 1100); sfx(e.p === me ? 'turn' : 'tick'); break;
+      note(e.p === me ? '¡Tu turno!' : 'Turno de ' + oppN(), 1100, true); sfx(e.p === me ? 'turn' : 'tick'); break;
     case 'play': { wiggle(e.sid, 'cast'); const c = CARDS[e.cid]; const pos = spPos(e.sid); if (pos >= 0) ring(pos, ELCOL[c.el], 1.8, 520); break; }
     case 'chi': panelFlash(e.p, '#ffd36b'); break;
     case 'orb': {
@@ -3403,7 +3426,7 @@ function drainV() {
   const it = vq.shift();
   if (!it) { vBusy = false; return; }
   vBusy = true;
-  const w = V ? prelude(it.evs) : 0;
+  const w = V ? prelude(it.evs) + (!window.__noFxDelay && (it.evs || []).some(oppStarter) ? ACT_WAIT : 0) : 0;
   const go = () => {
     applyView(it.view, it.evs);
     const sp = window.__noFxDelay ? 0 : evSpan(it.evs);
