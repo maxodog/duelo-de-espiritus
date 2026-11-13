@@ -3266,13 +3266,18 @@ function showOppCard(e) {
 }
 /* devuelve cuánto esperar antes de mostrar el nuevo estado del tablero */
 /* acciones de una carta rival: antes de cada una se esperan 3 s para poder seguirla */
-const ACT_WAIT = 3000;
+const ACT_WAIT = 3000, AUTO_WAIT = 1000;
+/* decisiones del rival (elegir destino o casilla de disparo): 3 s; lo automático que sigue (Traba, Presión, bloqueo...): 1 s */
+function waitFor(e) { return (e.t === 'move' || e.t === 'orb' || e.t === 'blitz') ? ACT_WAIT : AUTO_WAIT; }
+/* acciones que no son de una carta (compras, golpes, turno...) se ven 1 s más */
+const NONCARD = ['buy', 'shuffle', 'hit', 'out', 'fan', 'advance', 'turn', 'guard'];
+const NC_EXTRA = 1000;
 function actorOf(e) { if (e.p !== undefined && e.p !== null) return e.p; const s = e.sid !== undefined && V ? sOf(V, e.sid) : null; return s ? s.p : -1; }
 function isStarter(e) { return ['move', 'free', 'block', 'orb', 'hold', 'press', 'sting', 'rally', 'daze', 'blitz'].includes(e.t) && !(e.t === 'move' && (e.knock || e.place)); }
 function oppStarter(e) { return isStarter(e) && actorOf(e) !== me && actorOf(e) >= 0; }
 function evTimes(evs) {
   let t = 0, seen = false, end = 0; const at = [];
-  for (const e of evs || []) { if (oppStarter(e) && !window.__noFxDelay) { if (seen) t += ACT_WAIT; seen = true; } at.push(t); end = Math.max(end, t + evDur(e)); t += evGap(e); }
+  for (const e of evs || []) { if (oppStarter(e) && !window.__noFxDelay) { if (seen) t += waitFor(e); seen = true; } at.push(t); end = Math.max(end, t + evDur(e)); t += evGap(e); }
   return { at, end };
 }
 function prelude(evs) {
@@ -3290,14 +3295,19 @@ const GAP = { orb: 150, hit: 300, out: 650, move: 160, block: 120, cancel: 90, h
 /* Duración de cada efecto (ms) hasta que termina de verse y de poder leerse. Una acción no empieza a mostrarse hasta que la anterior terminó. */
 const DUR = { orb: 700, hit: 800, out: 1100, move: 520, block: 800, cancel: 900, hold: 700, press: 800, sting: 800, rally: 600, blitz: 1700, trick: 800, fan: 900, daze: 800, advance: 3000, ref: 3000, toss: 2700, play: 600, chi: 400, turn: 800, buy: 300, shuffle: 400, free: 700, guard: 600, over: 800 };
 /* mensajes de texto (aviso en pantalla): el siguiente efecto espera a que se puedan leer */
+function ncx(e) { return !window.__noFxDelay && NONCARD.includes(e.t) ? NC_EXTRA : 0; }
 function evGap(e) {
+  return evGap0(e) + ncx(e);
+}
+function evGap0(e) {
   if (e.t === 'trick' && e.p === me) return 1700;
   if (e.t === 'orb' && (e.none === 'sup' || e.none === 'lim')) return 1700;
   if (e.t === 'advance') return 2000;
   if (e.t === 'turn') return 800;
   return GAP[e.t] || 0;
 }
-function evDur(e) {
+function evDur(e) { return evDur0(e) + ncx(e); }
+function evDur0(e) {
   if (e.t === 'trick' && e.p === me) return 1700;
   if (e.t === 'orb' && (e.none === 'sup' || e.none === 'lim')) return 1700;
   return DUR[e.t] || 0;
@@ -3327,8 +3337,12 @@ function actNote(e) {
     case 'daze': note('Aturde a un espíritu', 1400); break;
   }
 }
+function ncNote(e) {
+  if (e.t === 'buy' && e.p !== me && CARDS[e.cid]) note((vsAI ? 'La máquina' : 'Tu amigo') + ' compra «' + CARDS[e.cid].n + '»', 1500);
+  if (e.t === 'shuffle' && e.p !== me) note((vsAI ? 'La máquina' : 'Tu amigo') + ' baraja su mazo', 1300);
+}
 function fxEvent(e) {
-  try { actNote(e); } catch (err) {}
+  try { actNote(e); ncNote(e); } catch (err) {}
   if (!V) return;
   switch (e.t) {
     case 'turn':
@@ -3426,7 +3440,7 @@ function drainV() {
   const it = vq.shift();
   if (!it) { vBusy = false; return; }
   vBusy = true;
-  const w = V ? prelude(it.evs) + (!window.__noFxDelay && (it.evs || []).some(oppStarter) ? ACT_WAIT : 0) : 0;
+  const w = V ? prelude(it.evs) + (!window.__noFxDelay && (() => { const st = (it.evs || []).find(oppStarter); return st ? waitFor(st) : 0; })()) : 0;
   const go = () => {
     applyView(it.view, it.evs);
     const sp = window.__noFxDelay ? 0 : evSpan(it.evs);
