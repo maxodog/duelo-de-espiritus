@@ -2734,8 +2734,8 @@ const syRow = c => '<div class="syrow">' + c.steps.map(sy).join('') + '</div>';
 function stepsBar(cs) {
   const c = CARDS[cs.cid]; let h = '<div class="pcard e-' + c.el + '"><span class="pn">' + ICON[c.el] + ' ' + esc(c.n) + '</span>', shownNext = false;
   c.steps.forEach((st, k) => {
-    if (k > cs.i && !shownNext) { shownNext = true; h += '<span class="plab">luego</span>'; }
-    h += '<span class="ps ' + (k < cs.i ? 'done' : k === cs.i ? 'cur' : 'next') + '">' + sy(st) + '</span>';
+    if (cs.i >= 0 && k > cs.i && !shownNext) { shownNext = true; h += '<span class="plab">luego</span>'; }
+    h += '<span class="ps ' + (cs.i < 0 ? 'cur' : k < cs.i ? 'done' : k === cs.i ? 'cur' : 'next') + '">' + sy(st) + '</span>';
   });
   return h + '</div>';
 }
@@ -2872,13 +2872,13 @@ function render() {
   $('modeLeg').innerHTML = V.mode === 'death' ? '<span class="modetag">☠ A muerte</span> ' : '';
 
   const pi = promptInfo(), pt = $('promptText');
-  pt.textContent = pt.dataset.flash || (waiting ? 'Resolviendo la acción…' : pi.text);
+  pt.textContent = pt.dataset.flash || (oppShow ? oppShow.lab : waiting ? 'Resolviendo la acción…' : pi.text);
   pt.classList.toggle('long', pt.textContent.length > 60 || (canAct && !!pi.btns && pt.textContent.length > 40));
   /* en tu propia secuencia de acciones basta con la simbología (sin el texto descriptivo) */
-  pt.hidden = !!(canAct && pd.cs && !pt.dataset.flash);
-  setHTML($('promptBtns'), canAct ? pi.btns : '');
-  setHTML($('promptSteps'), promptSteps());
-  const mineTone = !V.over && !!pd && pd.p === me;
+  pt.hidden = !!(canAct && pd.cs && !pt.dataset.flash && !oppShow);
+  setHTML($('promptBtns'), canAct && !oppShow ? pi.btns : '');
+  setHTML($('promptSteps'), oppShow ? oppShow.body : promptSteps());
+  const mineTone = !V.over && !!pd && pd.p === me && !oppShow;
   $('prompt').classList.toggle('mine', mineTone); $('prompt').classList.toggle('opp', !V.over && !mineTone);
 
   /* tablero */
@@ -3215,15 +3215,13 @@ function showCoin(e) {
   setTimeout(() => { res.textContent = mine ? '¡Empiezas tú!' : (vsAI ? 'Empieza la máquina' : 'Empieza tu amigo'); res.className = 'dres ok'; }, fast ? 20 : 1500);
 }
 /* carta que usó el rival (se muestra antes de aplicar sus movimientos) */
+let oppShow = null;
 function showOppCard(e) {
-  const o = $('oppCard'), col = e.p === 0 ? 'var(--t0)' : 'var(--t1)';
-  let body = '', lab = (e.t === 'trick' ? 'Truco de ' : 'Jugó ') + (vsAI ? 'la máquina' : 'tu amigo');
-  if (e.t === 'play') body = cardHTML(e.cid, 'static');
-  else if (e.t === 'trick') body = trickHTML(0, e.tid, false, '', '');
-  else { body = '<div class="cardback">⚡ +1 Energía</div>'; lab = (vsAI ? 'La máquina' : 'Tu amigo') + ' usó una carta'; }
-  o.innerHTML = '<div class="lbl">' + esc(lab) + '</div>' + body; o.style.setProperty('--c', col); o.hidden = false;
-  try { o.animate([{ opacity: 0, transform: 'translate(-50%,-30px) scale(.8)' }, { opacity: 1, transform: 'translate(-50%,0) scale(1.06)', offset: 0.12 }, { opacity: 1, transform: 'translate(-50%,0) scale(1)', offset: 0.2 }, { opacity: 1, transform: 'translate(-50%,0) scale(1)', offset: 0.85 }, { opacity: 0, transform: 'translate(-50%,-10px) scale(.95)' }], { duration: 4200 }); } catch (err) {}
-  clearTimeout(oppTimer); oppTimer = setTimeout(() => { o.hidden = true; }, 4200);
+  const who = vsAI ? 'La máquina' : 'Tu amigo';
+  if (e.t === 'play') oppShow = { lab: who + ' juega:', body: stepsBar({ cid: e.cid, i: -1 }) };
+  else if (e.t === 'trick') oppShow = { lab: who + ' usa un truco', body: '<div class="pcard e-' + TR[e.tid].el + '"><span class="pn">Truco: ' + esc(TR[e.tid].n) + '</span></div>' };
+  else oppShow = { lab: who + ' usó una carta: +1 Energía', body: '' };
+  render();
 }
 /* devuelve cuánto esperar antes de mostrar el nuevo estado del tablero */
 function prelude(evs) {
@@ -3352,7 +3350,7 @@ function fxEvent(e) {
 
 /* cola de estados: permite mostrar la carta del rival y sus efectos en orden */
 function applyView(view, evs) {
-  waiting = false; V = view; if (!(V.pending && V.pending.kind === 'gain' && V.pending.p === me)) $('cfModal').hidden = true; if (V.tm) setTeams(V.tm); showSection('game');
+  oppShow = null; waiting = false; V = view; if (!(V.pending && V.pending.kind === 'gain' && V.pending.p === me)) $('cfModal').hidden = true; if (V.tm) setTeams(V.tm); showSection('game');
   if (window.__onApply) window.__onApply(view, evs, evSpan(evs));
   if (view.over && evs.some(e => e.t === 'out')) { if (!window.__noFxDelay) { overlayAfter = Date.now() + 3450; clearTimeout(vTimer); vTimer = setTimeout(render, 3525); } }
   render(); hideOrbs(evs); playEvents(evs);
@@ -3374,7 +3372,7 @@ function drainV() {
   };
   if (w) vTimerQ = setTimeout(go, w); else go();
 }
-function clearViews() { vq = []; vBusy = false; clearTimeout(vTimerQ); clearTimeout(vTimer); overlayAfter = 0; $('oppCard').hidden = true; $('toast').hidden = true; $('bigMsg').hidden = true; }
+function clearViews() { vq = []; vBusy = false; clearTimeout(vTimerQ); clearTimeout(vTimer); overlayAfter = 0; oppShow = null; $('oppCard').hidden = true; $('toast').hidden = true; $('bigMsg').hidden = true; }
 
 
 /* ---------- eventos ---------- */
