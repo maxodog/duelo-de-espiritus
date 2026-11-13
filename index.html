@@ -2204,8 +2204,10 @@ let vq = [], vBusy = false, vTimerQ = null;
 let inSetup = false, myCfg = defaultCfg(0), cfgMine = null, cfgOther = null, readyMine = false, readyTheirs = false, tFilter = 'all';
 
 /* ---------- utilidades ---------- */
-let lastSection = '';
-function showSection(id) { if (id !== lastSection) { lastSection = id; try { window.scrollTo(0, 0); } catch (e) {} } document.body.classList.toggle('ingame', id === 'game'); for (const s of ['lobby', 'waiting', 'setup', 'game']) $(s).hidden = (s !== id); $('sub').hidden = (id === 'game' || id === 'setup'); $('hero').hidden = (id === 'game' || id === 'setup'); }
+let lastSection = '', userScrolled = false;
+['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(t => window.addEventListener(t, () => { userScrolled = true; }, { passive: true, capture: true }));
+function resetScroll() { if (userScrolled) return; try { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch (e) {} }
+function showSection(id) { if (id !== lastSection) { lastSection = id; userScrolled = false; resetScroll(); requestAnimationFrame(resetScroll); [120, 400, 1000].forEach(t => setTimeout(resetScroll, t)); } document.body.classList.toggle('ingame', id === 'game'); for (const s of ['lobby', 'waiting', 'setup', 'game']) $(s).hidden = (s !== id); $('sub').hidden = (id === 'game' || id === 'setup'); $('hero').hidden = (id === 'game' || id === 'setup'); }
 function lobbyMsg(t, ok) { const m = $('lobbyMsg'); m.textContent = t || ''; m.classList.toggle('ok', !!ok); }
 function setBusy(b) { $('btnCreate').disabled = b; $('btnJoin').disabled = b; $('codeInput').disabled = b; }
 function banner(t) { const b = $('banner'); b.hidden = !t; b.textContent = t || ''; }
