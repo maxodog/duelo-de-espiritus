@@ -2704,7 +2704,17 @@ let flashTimer = null;
 function setHTML(el, h) { if (el._h !== h) { el.innerHTML = h; el._h = h; } }
 function flash(t, dur) { const p = $('promptText'); p.dataset.flash = t; clearTimeout(flashTimer); flashTimer = setTimeout(() => { delete p.dataset.flash; render(); }, dur || 3300); render(); }
 /* los avisos de lo que ocurre en la jugada van solo en el cuadro superior, para no tapar el tablero */
-function note(txt, dur) { if (V) flash(txt, dur || 1600); }
+/* lo que hace el rival se lee con más calma: +150 % de tiempo en prelude y avisos (las animaciones no cambian) */
+const TXT = 2.5;
+let noteQ = [], noteBusy = false;
+function nextNote() { const n = noteQ.shift(); if (!n) { noteBusy = false; return; } noteBusy = true; flash(n.txt, n.d); setTimeout(nextNote, n.d); }
+function note(txt, dur) {
+  if (!V) return;
+  const slow = !!(V.pending && V.pending.p !== me) && !window.__noFxDelay, d = Math.min((dur || 1600) * (slow ? TXT : 1), 4500);
+  if (!slow) { flash(txt, d); return; }
+  noteQ.push({ txt, d }); while (noteQ.length > 3) noteQ.shift();
+  if (!noteBusy) nextNote();
+}
 
 /* ---------- dibujo ---------- */
 const dcol = c => me === 0 ? c : 5 - c;
@@ -3256,11 +3266,11 @@ function showOppCard(e) {
 function prelude(evs) {
   const f = window.__noFxDelay ? 0 : 1;
   const pl = evs.find(e => e.t === 'play' && e.p !== me);
-  if (pl) { showOppCard(pl); return 1575 * f; }
+  if (pl) { showOppCard(pl); return 1575 * TXT * f; }
   const tr = evs.find(e => e.t === 'trick' && e.p !== me);
-  if (tr) { showOppCard(tr); return 1425 * f; }
+  if (tr) { showOppCard(tr); return 1425 * TXT * f; }
   const ch = evs.find(e => e.t === 'chi' && e.p !== me);
-  if (ch) { showOppCard(ch); return 975 * f; }
+  if (ch) { showOppCard(ch); return 975 * TXT * f; }
   return 0;
 }
 
@@ -3379,7 +3389,7 @@ function fxEvent(e) {
 
 /* cola de estados: permite mostrar la carta del rival y sus efectos en orden */
 function applyView(view, evs) {
-  oppShow = null; waiting = false; V = view; if (!(V.pending && V.pending.kind === 'gain' && V.pending.p === me)) $('cfModal').hidden = true; if (V.tm) setTeams(V.tm); showSection('game');
+  oppShow = null; waiting = false; V = view; if (V.pending && V.pending.p === me) noteQ.length = 0; if (!(V.pending && V.pending.kind === 'gain' && V.pending.p === me)) $('cfModal').hidden = true; if (V.tm) setTeams(V.tm); showSection('game');
   if (window.__onApply) window.__onApply(view, evs, evSpan(evs));
   if (view.over && evs.some(e => e.t === 'out')) { if (!window.__noFxDelay) { overlayAfter = Date.now() + 3450; clearTimeout(vTimer); vTimer = setTimeout(render, 3525); } }
   render(); hideOrbs(evs); playEvents(evs);
